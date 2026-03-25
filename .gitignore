@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Build outputs / archives
+dist/
+*.tar.gz
+*.zip
+*.jar
+
+# Java build
+**/target/
+
+# Node / Next build
+**/node_modules/
+**/.next/
+
+# Local env / secrets
+**/.env
+**/.env.*
+**/backend.env
+
+# Logs
+**/*.log
+

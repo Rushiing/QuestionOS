@@ -1,0 +1,16 @@
+[Unit]
+Description=QuestionOS Java backend (Spring Boot)
+After=network.target
+
+[Service]
+Type=simple
+User=questionos
+Group=questionos
+WorkingDirectory=/opt/questionos
+EnvironmentFile=-/etc/questionos/backend.env
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar /opt/questionos/java-backend-current.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

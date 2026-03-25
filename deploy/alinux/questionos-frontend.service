@@ -1,0 +1,16 @@
+[Unit]
+Description=QuestionOS Next.js frontend
+After=network.target questionos-backend.service
+
+[Service]
+Type=simple
+User=questionos
+Group=questionos
+WorkingDirectory=/opt/questionos/frontend
+Environment=NODE_ENV=production
+ExecStart=/opt/questionos/frontend/node_modules/.bin/next start -p 3000 -H 127.0.0.1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,120 @@
+package com.questionos.backend.api;
+
+import com.questionos.backend.api.dto.SandboxDtos;
+import com.questionos.backend.domain.ConversationSession;
+import com.questionos.backend.service.SessionService;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
+
+import java.util.Optional;
+
+@Validated
+@RestController
+@RequestMapping("/api/v1/sandbox/sessions")
+public class SandboxController {
+    private final SessionService sessionService;
+
+    public SandboxController(SessionService sessionService) {
+        this.sessionService = sessionService;
+    }
+
+    @PostMapping
+    public ResponseEntity<SandboxDtos.CreateSessionResponse> create(@Valid @RequestBody SandboxDtos.CreateSessionRequest request) {
+        ConversationSession session = sessionService.createSession(request.mode(), request.question());
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                new SandboxDtos.CreateSessionResponse(session.getSessionId(), session.getStatus().name().toLowerCase(), session.getCreatedAt())
+        );
+    }
+
+    @GetMapping
+    public ResponseEntity<SandboxDtos.SessionListResponse> list() {
+        var items = sessionService.listSessions().stream()
+                .map(s -> new SandboxDtos.SessionListItem(
+                        s.getSessionId(),
+                        s.getMode(),
+                        s.getStatus(),
+                        s.getMessageCount(),
+                        s.getCreatedAt(),
+                        s.getLastActivityAt()
+                ))
+                .toList();
+        return ResponseEntity.ok(new SandboxDtos.SessionListResponse(items));
+    }
+
+    @PostMapping("/{sessionId}/messages")
+    public ResponseEntity<SandboxDtos.SendMessageResponse> send(
+            @PathVariable String sessionId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody SandboxDtos.SendMessageRequest request
+    ) {
+        Optional<String> maybeMessageId = sessionService.acceptUserMessage(sessionId, request.content(), idempotencyKey);
+        if (maybeMessageId.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+        return ResponseEntity.ok(new SandboxDtos.SendMessageResponse(maybeMessageId.get(), "accepted", idempotencyKey));
+    }
+
+    @GetMapping(value = "/{sessionId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> stream(
+            @PathVariable String sessionId,
+            @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId
+    ) {
+        Long parsed = null;
+        if (lastEventId != null && !lastEventId.startsWith("hb-") && !lastEventId.isBlank()) {
+            try {
+                parsed = Long.parseLong(lastEventId);
+            } catch (NumberFormatException ignored) {
+                parsed = null;
+            }
+        }
+        return sessionService.stream(sessionId, parsed);
+    }
+
+    @GetMapping("/{sessionId}")
+    public ResponseEntity<SandboxDtos.SessionStatusResponse> get(@PathVariable String sessionId) {
+        return sessionService.getSession(sessionId)
+                .map(session -> ResponseEntity.ok(new SandboxDtos.SessionStatusResponse(
+                        session.getSessionId(),
+                        session.getMode(),
+                        session.getStatus(),
+                        session.getMessageCount(),
+                        session.getCreatedAt(),
+                        session.getExpiresAt(),
+                        session.getLastActivityAt()
+                )))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{sessionId}/messages")
+    public ResponseEntity<SandboxDtos.SessionMessagesResponse> messages(@PathVariable String sessionId) {
+        if (sessionService.getSession(sessionId).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        var items = sessionService.listMessages(sessionId).stream()
+                .map(m -> new SandboxDtos.SessionMessageItem(
+                        m.messageId(),
+                        m.role(),
+                        m.content(),
+                        m.turnId(),
+                        m.createdAt(),
+                        m.agentSpeakerId()
+                ))
+                .toList();
+        return ResponseEntity.ok(new SandboxDtos.SessionMessagesResponse(sessionId, items));
+    }
+
+    @DeleteMapping("/{sessionId}")
+    public ResponseEntity<SandboxDtos.DeleteSessionResponse> delete(@PathVariable String sessionId) {
+        boolean deleted = sessionService.deleteSession(sessionId);
+        if (!deleted) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(new SandboxDtos.DeleteSessionResponse("deleted"));
+    }
+}
