@@ -60,19 +60,26 @@ public class AgentOrchestrator {
 
     private Flux<AgentReplyChunk> sandboxSingleReply(List<ConversationMessage> history, int sandboxRoundIndex) {
         Optional<AgentRegistryService.RegisteredAgent> reg = registryService.firstAvailableAgent();
-        if (reg.isEmpty()) {
-            return Flux.just(new AgentReplyChunk("agent_chunk", "请先在「OpenClaw 接入台」注册实例；沙盘内置角色与三方均通过该网关生成回复。"));
-        }
-
-        AgentRegistryService.RegisteredAgent agent = reg.get();
         List<SandboxSlot> order = new ArrayList<>();
-        // 三方 slot 出现两次，提高权重；其余内置各一次
-        order.add(SandboxSlot.THIRD_PARTY);
-        order.add(SandboxSlot.AUDITOR);
-        order.add(SandboxSlot.THIRD_PARTY);
-        order.add(SandboxSlot.RISK_OFFICER);
-        order.add(SandboxSlot.VALUE_JUDGE);
-        order.add(SandboxSlot.INTEGRATOR);
+        boolean hasThirdPartyAgents = reg.isPresent();
+
+        // 你的新规则：
+        // - 未接入任何三方 agents：只运行内置四角色
+        // - 已接入三方 agents：内置四角色 + 三方 slot 轮转
+        if (hasThirdPartyAgents) {
+            // 三方 slot 出现两次，提高权重；其余内置各一次
+            order.add(SandboxSlot.THIRD_PARTY);
+            order.add(SandboxSlot.AUDITOR);
+            order.add(SandboxSlot.THIRD_PARTY);
+            order.add(SandboxSlot.RISK_OFFICER);
+            order.add(SandboxSlot.VALUE_JUDGE);
+            order.add(SandboxSlot.INTEGRATOR);
+        } else {
+            order.add(SandboxSlot.AUDITOR);
+            order.add(SandboxSlot.RISK_OFFICER);
+            order.add(SandboxSlot.VALUE_JUDGE);
+            order.add(SandboxSlot.INTEGRATOR);
+        }
 
         SandboxSlot slot = order.get(Math.floorMod(sandboxRoundIndex, order.size()));
         String latestUser = latestUserMessage(history);
@@ -80,8 +87,10 @@ public class AgentOrchestrator {
 
         return switch (slot) {
             case THIRD_PARTY -> {
+                // slot 不会在 hasThirdPartyAgents=false 时出现
+                AgentRegistryService.RegisteredAgent agent = reg.get();
                 String aid = agent.agentId();
-                yield oneSpeaker(
+                yield oneSpeakerWithAgent(
                         aid,
                         aid,
                         null,
@@ -90,42 +99,74 @@ public class AgentOrchestrator {
                         aid + " 发言结束。"
                 );
             }
-            case AUDITOR -> oneSpeaker(
-                    "auditor",
-                    "利益审计师",
-                    SandboxBuiltInPrompts.AUDITOR,
-                    buildAttackerUserMessage(prior, latestUser),
-                    agent,
-                    "利益审计师 发言结束。"
-            );
-            case RISK_OFFICER -> oneSpeaker(
-                    "risk_officer",
-                    "风险预测官",
-                    SandboxBuiltInPrompts.RISK_OFFICER,
-                    buildAttackerUserMessage(prior, latestUser),
-                    agent,
-                    "风险预测官 发言结束。"
-            );
-            case VALUE_JUDGE -> oneSpeaker(
-                    "value_judge",
-                    "价值裁判",
-                    SandboxBuiltInPrompts.VALUE_JUDGE,
-                    buildAttackerUserMessage(prior, latestUser),
-                    agent,
-                    "价值裁判 发言结束。"
-            );
-            case INTEGRATOR -> oneSpeaker(
-                    "integrator",
-                    "首席整合官",
-                    SandboxBuiltInPrompts.INTEGRATOR,
-                    buildIntegratorUserMessage(prior, latestUser),
-                    agent,
-                    "首席整合官 发言结束。"
-            );
+            case AUDITOR -> hasThirdPartyAgents
+                    ? oneSpeakerWithAgent(
+                            "auditor",
+                            "利益审计师",
+                            SandboxBuiltInPrompts.AUDITOR,
+                            buildAttackerUserMessage(prior, latestUser),
+                            reg.get(),
+                            "利益审计师 发言结束。"
+                    )
+                    : oneSpeakerWithDefaultLlm(
+                            "auditor",
+                            "利益审计师",
+                            SandboxBuiltInPrompts.AUDITOR,
+                            buildAttackerUserMessage(prior, latestUser),
+                            "利益审计师 发言结束。"
+                    );
+            case RISK_OFFICER -> hasThirdPartyAgents
+                    ? oneSpeakerWithAgent(
+                            "risk_officer",
+                            "风险预测官",
+                            SandboxBuiltInPrompts.RISK_OFFICER,
+                            buildAttackerUserMessage(prior, latestUser),
+                            reg.get(),
+                            "风险预测官 发言结束。"
+                    )
+                    : oneSpeakerWithDefaultLlm(
+                            "risk_officer",
+                            "风险预测官",
+                            SandboxBuiltInPrompts.RISK_OFFICER,
+                            buildAttackerUserMessage(prior, latestUser),
+                            "风险预测官 发言结束。"
+                    );
+            case VALUE_JUDGE -> hasThirdPartyAgents
+                    ? oneSpeakerWithAgent(
+                            "value_judge",
+                            "价值裁判",
+                            SandboxBuiltInPrompts.VALUE_JUDGE,
+                            buildAttackerUserMessage(prior, latestUser),
+                            reg.get(),
+                            "价值裁判 发言结束。"
+                    )
+                    : oneSpeakerWithDefaultLlm(
+                            "value_judge",
+                            "价值裁判",
+                            SandboxBuiltInPrompts.VALUE_JUDGE,
+                            buildAttackerUserMessage(prior, latestUser),
+                            "价值裁判 发言结束。"
+                    );
+            case INTEGRATOR -> hasThirdPartyAgents
+                    ? oneSpeakerWithAgent(
+                            "integrator",
+                            "首席整合官",
+                            SandboxBuiltInPrompts.INTEGRATOR,
+                            buildIntegratorUserMessage(prior, latestUser),
+                            reg.get(),
+                            "首席整合官 发言结束。"
+                    )
+                    : oneSpeakerWithDefaultLlm(
+                            "integrator",
+                            "首席整合官",
+                            SandboxBuiltInPrompts.INTEGRATOR,
+                            buildIntegratorUserMessage(prior, latestUser),
+                            "首席整合官 发言结束。"
+                    );
         };
     }
 
-    private Flux<AgentReplyChunk> oneSpeaker(
+    private Flux<AgentReplyChunk> oneSpeakerWithAgent(
             String speakerId,
             String displayName,
             String systemPrompt,
@@ -136,6 +177,27 @@ public class AgentOrchestrator {
         return Flux.just(new AgentReplyChunk("agent_start", speakerId + "|" + displayName))
                 .concatWith(
                         invokeService.invokeOpenClaw(agent, systemPrompt, userMessage)
+                                .timeout(Duration.ofSeconds(25))
+                                .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
+                                .onErrorResume(e -> Flux.just(
+                                        new AgentReplyChunk("agent_error", "调用失败: " + e.getMessage()),
+                                        new AgentReplyChunk("agent_chunk", fallbackLine(speakerId))
+                                ))
+                )
+                .concatWithValues(new AgentReplyChunk("agent_done", doneLine))
+                .delayElements(Duration.ofMillis(80));
+    }
+
+    private Flux<AgentReplyChunk> oneSpeakerWithDefaultLlm(
+            String speakerId,
+            String displayName,
+            String systemPrompt,
+            String userMessage,
+            String doneLine
+    ) {
+        return Flux.just(new AgentReplyChunk("agent_start", speakerId + "|" + displayName))
+                .concatWith(
+                        invokeService.invokeDefaultLlm(systemPrompt, userMessage)
                                 .timeout(Duration.ofSeconds(25))
                                 .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
                                 .onErrorResume(e -> Flux.just(

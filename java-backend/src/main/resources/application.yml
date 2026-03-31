@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 spring:
   application:
@@ -13,10 +13,19 @@ management:
 
 questionos:
   auth:
-    sandbox-token: sk-sandbox-dev
+    sandbox-token: ${QUESTIONOS_SANDBOX_TOKEN:sk-sandbox-dev}
   cors:
     # 逗号分隔；生产请加公网入口，例如 http://47.253.98.164
-    allowed-origins: http://localhost:3000,http://127.0.0.1:3000
+    allowed-origins: ${QUESTIONOS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
   limits:
     maxMessagesPerMinute: 30
     maxSessionsPerToken: 20
+
+  # 本地真实调用 LLM（用于：当未接入任何三方 agents 时，仍能让内置四角色正常沙盘推演）
+  # 你可以把 endpoint 配成 OpenAI 或 OpenAI-compatible 的聊天补全接口：
+  # - 例如 OpenAI：https://api.openai.com
+  # - 或已经带 /v1/chat/completions：https://xxx/v1/chat/completions
+  llm:
+    endpoint: ${QUESTIONOS_LLM_ENDPOINT:}
+    apiKey: ${QUESTIONOS_LLM_API_KEY:}
+    model: ${QUESTIONOS_LLM_MODEL:}

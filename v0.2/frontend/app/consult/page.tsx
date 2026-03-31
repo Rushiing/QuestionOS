@@ -111,6 +111,9 @@ function agentMarkdownSource(msg: Message): string {
   return raw;
 }
 
+/** 外聘区「🧩 已接入 Agents」预览卡片：先隐藏；loadInstances / 沙盘三方 slot 仍工作 */
+const SHOW_EMBEDDED_CONNECTED_AGENTS_CARD = false;
+
 export default function ConsultPage() {
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -677,46 +680,48 @@ export default function ConsultPage() {
                   <div>
                     <p className="text-center text-xs text-slate-500 mb-3 tracking-wide">外聘推演专家</p>
                     <div className="flex justify-center gap-8 sm:gap-10 flex-wrap items-start">
-                      <div
-                        className="relative flex flex-col items-center min-w-[4.5rem]"
-                        onMouseEnter={() => setPuzzleHover(true)}
-                        onMouseLeave={() => setPuzzleHover(false)}
-                      >
-                        <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-3xl mb-2">
-                          🧩
-                        </div>
-                        <span
-                          className="text-sm font-medium text-slate-700 text-center leading-tight max-w-[10rem] truncate"
-                          title={puzzlePrimaryLabel}
+                      {SHOW_EMBEDDED_CONNECTED_AGENTS_CARD && (
+                        <div
+                          className="relative flex flex-col items-center min-w-[4.5rem]"
+                          onMouseEnter={() => setPuzzleHover(true)}
+                          onMouseLeave={() => setPuzzleHover(false)}
                         >
-                          {puzzlePrimaryLabel}
-                        </span>
-                        {instances.length > 0 && puzzleHover && (
-                          <div
-                            className="absolute left-1/2 bottom-full z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-2 py-2 shadow-lg"
-                            role="tooltip"
-                          >
-                            <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                              已接入实例
-                            </p>
-                            <div
-                              ref={instanceHoverScrollRef}
-                              className="max-h-28 overflow-y-auto text-left text-xs text-slate-700"
-                            >
-                              {instances.map((it) => (
-                                <div
-                                  key={it.agentId}
-                                  className="truncate rounded px-1.5 py-1 hover:bg-slate-50"
-                                  title={`${it.agentId} · ${it.provider}`}
-                                >
-                                  <span className="font-medium">{it.agentId}</span>
-                                  <span className="ml-1 text-slate-400">{it.provider}</span>
-                                </div>
-                              ))}
-                            </div>
+                          <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-3xl mb-2">
+                            🧩
                           </div>
-                        )}
-                      </div>
+                          <span
+                            className="text-sm font-medium text-slate-700 text-center leading-tight max-w-[10rem] truncate"
+                            title={puzzlePrimaryLabel}
+                          >
+                            {puzzlePrimaryLabel}
+                          </span>
+                          {instances.length > 0 && puzzleHover && (
+                            <div
+                              className="absolute left-1/2 bottom-full z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-2 py-2 shadow-lg"
+                              role="tooltip"
+                            >
+                              <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                                已接入实例
+                              </p>
+                              <div
+                                ref={instanceHoverScrollRef}
+                                className="max-h-28 overflow-y-auto text-left text-xs text-slate-700"
+                              >
+                                {instances.map((it) => (
+                                  <div
+                                    key={it.agentId}
+                                    className="truncate rounded px-1.5 py-1 hover:bg-slate-50"
+                                    title={`${it.agentId} · ${it.provider}`}
+                                  >
+                                    <span className="font-medium">{it.agentId}</span>
+                                    <span className="ml-1 text-slate-400">{it.provider}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => setIntegrationEntryOpen((v) => !v)}
@@ -741,6 +746,10 @@ export default function ConsultPage() {
                 <div className="mt-5 mx-auto max-w-xl bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900">
                   <div className="font-semibold mb-2">OpenClaw Agent 接入台</div>
                   <p className="mb-3">3 步完成接入：创建实例 → 复制配置 → 联通测试。</p>
+                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    线上环境请填写「后端服务器可访问」的真实 endpoint / API Key / model（第三方模型提供方参数）。
+                    这里的 API Key 与 QuestionOS 的 sandbox token 不同，不要混用。
+                  </div>
 
                   <div className="mb-3 flex gap-2 text-xs">
                     <span className={`px-2 py-1 rounded ${onboardingStep >= 1 ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>1. 创建实例</span>
