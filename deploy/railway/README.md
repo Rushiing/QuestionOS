@@ -51,3 +51,21 @@ NEXT_PUBLIC_SANDBOX_TOKEN=<same-as-backend-token>
 2. 能创建 session，且收到 SSE 流式回复，说明主链路正常。
 3. 若报 401，检查前后端 token 是否一致。
 4. 若报 CORS，检查 `QUESTIONOS_ALLOWED_ORIGINS` 是否包含当前前端 origin（协议 + 域名 + 端口）。
+
+## 常见问题
+
+### `Railpack could not determine how to build the app`
+
+说明当前 Service 的**根目录**不对，或仍在用 Railpack 猜构建方式。
+
+1. 打开该 Service → **Settings** → **Root Directory**，后端填 `java-backend`，前端填 `v0.2/frontend`（必须和本仓库子目录一致）。
+2. **Settings** → **Build** → Builder 选 **Dockerfile**（仓库里已放 `railway.json`，`build.builder` 为 `DOCKERFILE`，会覆盖为 Docker 构建）。
+3. 保存后 **Redeploy**。
+
+不要在「整个 monorepo 根目录」上部署单个应用；根目录没有单一的 `package.json` / `pom.xml` 时，Railpack 无法自动判断。
+
+### 误把 API Key 推到了公开 GitHub
+
+1. 在对应服务商控制台**立刻轮换/作废**该密钥（例如 Resend：重新生成 API Key，删除旧 Key）。
+2. 仅通过环境变量或私有配置注入密钥，**不要**写在代码默认值里。
+3. 历史提交里仍可能残留密钥；若需从公开历史中抹掉，需使用 `git filter-repo` / BFG 等重写历史（或新建仓库只推净版）。GitGuardian 文档与 Resend 控制台均有说明。

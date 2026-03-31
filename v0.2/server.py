@@ -68,8 +68,8 @@ AUTH_DB_PATH = os.path.join(os.path.dirname(__file__), 'data', 'users.db')
 sessions = {}
 
 # ============ 生图配置 ============
-DASHSCOPE_IMAGE_KEY = 'sk-b761fa9e6be64baf9e40ffce5121486b'  # Wan2.6 专用
-IMAGE_MODEL = 'wan2.6-t2i'
+DASHSCOPE_IMAGE_KEY = os.getenv('DASHSCOPE_IMAGE_KEY') or os.getenv('DASHSCOPE_API_KEY') or os.getenv('BAILIAN_API_KEY') or ''
+IMAGE_MODEL = os.getenv('DASHSCOPE_IMAGE_MODEL', 'wan2.6-t2i')
 
 def generate_contradiction_image(center: str, main_conflict: str, secondary_conflicts: list = None) -> dict:
     """生成矛盾关系图
@@ -97,6 +97,9 @@ def generate_contradiction_image(center: str, main_conflict: str, secondary_conf
         prompt += "，清晰的文字标注，商业插画风格，高对比度"
         
         print(f"[IMAGE] 生成矛盾图: {prompt[:100]}...")
+        
+        if not DASHSCOPE_IMAGE_KEY:
+            return {"success": False, "error": "未配置 DASHSCOPE_IMAGE_KEY（或 DASHSCOPE_API_KEY / BAILIAN_API_KEY）"}
         
         # 调用 Wan2.6 API
         url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
@@ -148,12 +151,15 @@ def generate_contradiction_image(center: str, main_conflict: str, secondary_conf
         return {"success": False, "error": str(e)}
 
 # ============ 邮箱验证配置 ============
-RESEND_API_KEY = os.getenv('RESEND_API_KEY', 're_6bVt3DEk_76AtqTp8wH5eLjcv8uAXhjrX')
+RESEND_API_KEY = os.getenv('RESEND_API_KEY') or ''
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3001')
 
 def send_verification_email(email: str, token: str, name: str = None) -> bool:
     """发送验证邮件"""
     try:
+        if not RESEND_API_KEY.strip():
+            print("[EMAIL] 未配置 RESEND_API_KEY，跳过发送")
+            return False
         import resend
         resend.api_key = RESEND_API_KEY
         

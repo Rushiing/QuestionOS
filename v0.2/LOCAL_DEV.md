@@ -37,14 +37,15 @@ npm run dev
 
 ### 后端
 
-`server.py` 从环境变量读取，也可使用内置默认值：
+`server.py` 从环境变量或 `.env` 读取；**API Key 等敏感信息不要写进代码仓库**。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| DASHSCOPE_API_KEY | 阿里云百炼 API Key | 已配置 |
+| DASHSCOPE_API_KEY | 阿里云百炼 API Key | （无，请在环境或 `.env` 中配置） |
 | DASHSCOPE_BASE_URL | API 地址 | https://coding.dashscope.aliyuncs.com/v1 |
 | JWT_SECRET | JWT 密钥 | 开发默认值 |
-| RESEND_API_KEY | 邮箱验证（Resend） | 已配置 |
+| RESEND_API_KEY | 邮箱验证（Resend） | （无，需要发信时再配置） |
+| DASHSCOPE_IMAGE_KEY | 生图专用 Key（可选） | 未设置时回退到 DASHSCOPE_API_KEY / BAILIAN_API_KEY |
 | FRONTEND_URL | 前端地址（验证链接） | http://localhost:3001 |
 
 ### 前端

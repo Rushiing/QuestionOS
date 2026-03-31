@@ -19,6 +19,10 @@ dist/
 **/.env.*
 **/backend.env
 
+# Python venv（勿提交）
+**/venv/
+**/.venv/
+
 # Logs
 **/*.log
 
