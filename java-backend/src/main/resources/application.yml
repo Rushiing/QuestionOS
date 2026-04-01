@@ -16,6 +16,8 @@ management:
 questionos:
   auth:
     sandbox-token: ${QUESTIONOS_SANDBOX_TOKEN:sk-sandbox-dev}
+    google:
+      client-id: ${QUESTIONOS_GOOGLE_CLIENT_ID:}
   cors:
     # 逗号分隔；生产请加公网入口，例如 http://47.253.98.164
     allowed-origins: ${QUESTIONOS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}

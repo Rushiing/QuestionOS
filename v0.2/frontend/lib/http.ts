@@ -60,10 +60,8 @@ export const buildHeaders = (extra?: Record<string, string>): Record<string, str
   ...extra,
 });
 
-// Sandbox APIs in local dev use a dedicated token.
-// Do not rely on user login token here, otherwise old/invalid tokens can break session creation.
 export const buildSandboxHeaders = (extra?: Record<string, string>): Record<string, string> => ({
-  Authorization: `Bearer ${SANDBOX_FALLBACK_TOKEN}`,
+  Authorization: `Bearer ${getBearerToken()}`,
   'X-API-Version': API_VERSION,
   ...extra,
 });

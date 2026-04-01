@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class ConversationSession {
     private final String sessionId;
+    private final String ownerUserId;
     private final SessionMode mode;
     private volatile SessionStatus status;
     private final Instant createdAt;
@@ -16,8 +17,9 @@ public class ConversationSession {
     /** 沙盘模式：用户每发一条消息，轮转一位 agent 发言（一问一答） */
     private final AtomicInteger sandboxSpeakerRound;
 
-    public ConversationSession(String sessionId, SessionMode mode, Instant createdAt, Instant expiresAt) {
+    public ConversationSession(String sessionId, String ownerUserId, SessionMode mode, Instant createdAt, Instant expiresAt) {
         this.sessionId = sessionId;
+        this.ownerUserId = ownerUserId;
         this.mode = mode;
         this.status = SessionStatus.CREATED;
         this.createdAt = createdAt;
@@ -49,6 +51,10 @@ public class ConversationSession {
 
     public String getSessionId() {
         return sessionId;
+    }
+
+    public String getOwnerUserId() {
+        return ownerUserId;
     }
 
     public SessionMode getMode() {

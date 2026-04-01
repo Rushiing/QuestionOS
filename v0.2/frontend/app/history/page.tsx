@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { sandboxClient } from '../../lib/sandbox-client';
+import { useAuth } from '../../components/AuthButton';
 
 interface Session {
   id: string;
@@ -17,13 +18,19 @@ interface Session {
 
 export default function HistoryPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
     fetchSessions();
-  }, []);
+  }, [authLoading, user]);
 
   const fetchSessions = async () => {
     try {
@@ -118,7 +125,7 @@ export default function HistoryPage() {
 
       {/* Content */}
       <main className="max-w-3xl mx-auto px-6 py-8">
-        {loading ? (
+        {authLoading || loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
           </div>

@@ -30,17 +30,25 @@ public class SandboxController {
         this.sessionService = sessionService;
     }
 
+    private String currentUserId(org.springframework.web.server.ServerWebExchange exchange) {
+        Object uid = exchange.getAttribute("authUserId");
+        return uid == null ? "" : String.valueOf(uid);
+    }
+
     @PostMapping
-    public ResponseEntity<SandboxDtos.CreateSessionResponse> create(@Valid @RequestBody SandboxDtos.CreateSessionRequest request) {
-        ConversationSession session = sessionService.createSession(request.mode(), request.question());
+    public ResponseEntity<SandboxDtos.CreateSessionResponse> create(
+            org.springframework.web.server.ServerWebExchange exchange,
+            @Valid @RequestBody SandboxDtos.CreateSessionRequest request
+    ) {
+        ConversationSession session = sessionService.createSession(currentUserId(exchange), request.mode(), request.question());
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 new SandboxDtos.CreateSessionResponse(session.getSessionId(), session.getStatus().name().toLowerCase(), session.getCreatedAt())
         );
     }
 
     @GetMapping
-    public ResponseEntity<SandboxDtos.SessionListResponse> list() {
-        var items = sessionService.listSessions().stream()
+    public ResponseEntity<SandboxDtos.SessionListResponse> list(org.springframework.web.server.ServerWebExchange exchange) {
+        var items = sessionService.listSessions(currentUserId(exchange)).stream()
                 .map(s -> new SandboxDtos.SessionListItem(
                         s.getSessionId(),
                         s.getMode(),
@@ -55,11 +63,12 @@ public class SandboxController {
 
     @PostMapping("/{sessionId}/messages")
     public ResponseEntity<SandboxDtos.SendMessageResponse> send(
+            org.springframework.web.server.ServerWebExchange exchange,
             @PathVariable String sessionId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody SandboxDtos.SendMessageRequest request
     ) {
-        Optional<String> maybeMessageId = sessionService.acceptUserMessage(sessionId, request.content(), idempotencyKey);
+        Optional<String> maybeMessageId = sessionService.acceptUserMessage(currentUserId(exchange), sessionId, request.content(), idempotencyKey);
         if (maybeMessageId.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
@@ -68,6 +77,7 @@ public class SandboxController {
 
     @GetMapping(value = "/{sessionId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> stream(
+            org.springframework.web.server.ServerWebExchange exchange,
             @PathVariable String sessionId,
             @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId
     ) {
@@ -79,12 +89,15 @@ public class SandboxController {
                 parsed = null;
             }
         }
-        return sessionService.stream(sessionId, parsed);
+        return sessionService.stream(currentUserId(exchange), sessionId, parsed);
     }
 
     @GetMapping("/{sessionId}")
-    public ResponseEntity<SandboxDtos.SessionStatusResponse> get(@PathVariable String sessionId) {
-        return sessionService.getSession(sessionId)
+    public ResponseEntity<SandboxDtos.SessionStatusResponse> get(
+            org.springframework.web.server.ServerWebExchange exchange,
+            @PathVariable String sessionId
+    ) {
+        return sessionService.getSession(currentUserId(exchange), sessionId)
                 .map(session -> ResponseEntity.ok(new SandboxDtos.SessionStatusResponse(
                         session.getSessionId(),
                         session.getMode(),
@@ -98,8 +111,11 @@ public class SandboxController {
     }
 
     @GetMapping("/{sessionId}/messages")
-    public ResponseEntity<SandboxDtos.SessionMessagesResponse> messages(@PathVariable String sessionId) {
-        if (sessionService.getSession(sessionId).isEmpty()) {
+    public ResponseEntity<SandboxDtos.SessionMessagesResponse> messages(
+            org.springframework.web.server.ServerWebExchange exchange,
+            @PathVariable String sessionId
+    ) {
+        if (sessionService.getSession(currentUserId(exchange), sessionId).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         var items = sessionService.listMessages(sessionId).stream()
@@ -116,8 +132,11 @@ public class SandboxController {
     }
 
     @DeleteMapping("/{sessionId}")
-    public ResponseEntity<SandboxDtos.DeleteSessionResponse> delete(@PathVariable String sessionId) {
-        boolean deleted = sessionService.deleteSession(sessionId);
+    public ResponseEntity<SandboxDtos.DeleteSessionResponse> delete(
+            org.springframework.web.server.ServerWebExchange exchange,
+            @PathVariable String sessionId
+    ) {
+        boolean deleted = sessionService.deleteSession(currentUserId(exchange), sessionId);
         if (!deleted) {
             return ResponseEntity.notFound().build();
         }

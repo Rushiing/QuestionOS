@@ -39,10 +39,10 @@ public class SessionService {
         this.orchestrator = orchestrator;
     }
 
-    public ConversationSession createSession(SessionMode mode, String question) {
+    public ConversationSession createSession(String ownerUserId, SessionMode mode, String question) {
         String sessionId = "sess_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         Instant now = Instant.now();
-        ConversationSession session = new ConversationSession(sessionId, mode, now, now.plus(SESSION_TTL));
+        ConversationSession session = new ConversationSession(sessionId, ownerUserId, mode, now, now.plus(SESSION_TTL));
         sessions.put(sessionId, session);
         messages.put(sessionId, new ArrayList<>());
         eventStore.put(sessionId, new ArrayList<>());
@@ -53,12 +53,17 @@ public class SessionService {
         return session;
     }
 
-    public Optional<ConversationSession> getSession(String sessionId) {
-        return Optional.ofNullable(sessions.get(sessionId));
+    public Optional<ConversationSession> getSession(String ownerUserId, String sessionId) {
+        ConversationSession session = sessions.get(sessionId);
+        if (session == null || !session.getOwnerUserId().equals(ownerUserId)) {
+            return Optional.empty();
+        }
+        return Optional.of(session);
     }
 
-    public List<ConversationSession> listSessions() {
+    public List<ConversationSession> listSessions(String ownerUserId) {
         return sessions.values().stream()
+                .filter(s -> s.getOwnerUserId().equals(ownerUserId))
                 .sorted(Comparator.comparing(ConversationSession::getCreatedAt).reversed())
                 .toList();
     }
@@ -67,9 +72,9 @@ public class SessionService {
         return List.copyOf(messages.getOrDefault(sessionId, List.of()));
     }
 
-    public Optional<String> acceptUserMessage(String sessionId, String content, String idemKey) {
+    public Optional<String> acceptUserMessage(String ownerUserId, String sessionId, String content, String idemKey) {
         ConversationSession session = sessions.get(sessionId);
-        if (session == null) {
+        if (session == null || !session.getOwnerUserId().equals(ownerUserId)) {
             return Optional.empty();
         }
         String key = sessionId + ":" + idemKey;
@@ -109,7 +114,11 @@ public class SessionService {
         return Optional.of(userMessage.messageId());
     }
 
-    public boolean deleteSession(String sessionId) {
+    public boolean deleteSession(String ownerUserId, String sessionId) {
+        ConversationSession existing = sessions.get(sessionId);
+        if (existing == null || !existing.getOwnerUserId().equals(ownerUserId)) {
+            return false;
+        }
         boolean existed = sessions.remove(sessionId) != null;
         messages.remove(sessionId);
         eventStore.remove(sessionId);
@@ -117,7 +126,11 @@ public class SessionService {
         return existed;
     }
 
-    public Flux<ServerSentEvent<String>> stream(String sessionId, Long lastEventId) {
+    public Flux<ServerSentEvent<String>> stream(String ownerUserId, String sessionId, Long lastEventId) {
+        ConversationSession session = sessions.get(sessionId);
+        if (session == null || !session.getOwnerUserId().equals(ownerUserId)) {
+            return Flux.empty();
+        }
         Long effectiveLastEventId = lastEventId;
         long currentSeq = globalSeq.get();
         // Backend restart may reset seq to small numbers. If client sends a stale larger cursor,

@@ -4,7 +4,7 @@ import { useState, useEffect, useLayoutEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AuthButton } from '../../components/AuthButton';
+import { AuthButton, useAuth } from '../../components/AuthButton';
 import { sandboxClient } from '../../lib/sandbox-client';
 interface Message {
   id: string;
@@ -464,6 +464,7 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
 
 function ChatPageContent() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -500,7 +501,7 @@ function ChatPageContent() {
 
   // 处理用重构后的问题继续追问
   const handleContinueWithQuestion = async (question: string) => {
-    if (!question.trim() || isLoading) return;
+    if (!user || !question.trim() || isLoading) return;
     
     setShowWelcome(false);
     setValidationError(null);
@@ -618,6 +619,11 @@ function ChatPageContent() {
   };
 
   const handleSendMessage = async (text?: string) => {
+    if (!user) {
+      setValidationError('请先登录后再开始对话');
+      setTimeout(() => setValidationError(null), 4000);
+      return;
+    }
     const messageText = text || input;
     if (!messageText.trim() || isLoading) return;
 
@@ -789,15 +795,17 @@ function ChatPageContent() {
             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
             在线
           </div>
-          <button
-            onClick={() => router.push('/history')}
-            className="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            历史
-          </button>
+          {user && (
+            <button
+              onClick={() => router.push('/history')}
+              className="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              历史
+            </button>
+          )}
           <div className="ml-2">
             <AuthButton />
           </div>
@@ -831,6 +839,11 @@ function ChatPageContent() {
           {validationError && (
             <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
               💭 {validationError}
+            </div>
+          )}
+          {!authLoading && !user && (
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-sm">
+              当前为访客模式：可浏览页面，登录后可发起对话并查看历史记录。
             </div>
           )}
 
@@ -912,14 +925,14 @@ function ChatPageContent() {
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-blue-300 focus:bg-white resize-none text-[15px]"
                 rows={1}
                 style={{ minHeight: '48px', maxHeight: '120px' }}
-                disabled={isLoading}
+                disabled={isLoading || !user}
               />
             </div>
             <button
               onClick={() => handleSendMessage()}
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || !user || !input.trim()}
               className={`px-6 py-3 rounded-2xl text-white font-medium transition-all ${
-                isLoading || !input.trim()
+                isLoading || !user || !input.trim()
                   ? 'bg-blue-300 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
               }`}

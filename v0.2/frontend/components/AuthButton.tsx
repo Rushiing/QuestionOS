@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiPath } from '../lib/runtime-config';
 
 interface User {
   id: string;
   email: string;
   name: string;
-  created_at: string;
+  avatar?: string;
 }
 
 export function useAuth() {
@@ -16,22 +17,53 @@ export function useAuth() {
   const router = useRouter();
 
   useEffect(() => {
-    // 从 localStorage 读取用户信息
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    if (token && userStr) {
+    let mounted = true;
+    const bootstrap = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        if (mounted) setLoading(false);
+        return;
+      }
       try {
-        setUser(JSON.parse(userStr));
+        const res = await fetch(apiPath('/api/auth/me'), {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!res.ok) {
+          throw new Error('unauthorized');
+        }
+        const data = await res.json();
+        const me = data?.user as User | undefined;
+        if (!me) throw new Error('invalid user');
+        localStorage.setItem('user', JSON.stringify(me));
+        if (mounted) setUser(me);
       } catch {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        if (mounted) setUser(null);
+      } finally {
+        if (mounted) setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+    bootstrap();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const logout = () => {
+  const logout = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        await fetch(apiPath('/api/auth/logout'), {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // ignore network failure on best-effort logout
+      }
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
@@ -69,9 +101,13 @@ export function AuthButton() {
         onClick={() => setShowMenu(!showMenu)}
         className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
       >
-        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-          {user.name.charAt(0).toUpperCase()}
-        </div>
+        {user.avatar ? (
+          <img src={user.avatar} alt={user.name} className="w-6 h-6 rounded-full object-cover" />
+        ) : (
+          <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
+            {user.name.charAt(0).toUpperCase()}
+          </div>
+        )}
         <span className="text-sm text-slate-700">{user.name}</span>
         <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
