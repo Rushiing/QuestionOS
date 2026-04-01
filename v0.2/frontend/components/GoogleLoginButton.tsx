@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiPath } from '../lib/runtime-config';
+import { useAuth } from './AuthProvider';
 
 function resolveGoogleClientId(): string {
   if (typeof window !== 'undefined' && window.__QOS_GOOGLE_CLIENT_ID__) {
@@ -13,6 +14,7 @@ function resolveGoogleClientId(): string {
 
 export function GoogleLoginButton() {
   const router = useRouter();
+  const { setUserFromLogin } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const handleGoogleLogin = () => {
@@ -74,11 +76,9 @@ export function GoogleLoginButton() {
         throw new Error(data.detail || 'Google 登录失败');
       }
 
-      // 保存 Token
       localStorage.setItem('token', data.access_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      setUserFromLogin(data.user);
 
-      // 跳转到首页
       router.push('/');
     } catch (error: any) {
       console.error('Google login error:', error);

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { Providers } from './providers'
 
 /** 避免 layout 被静态化导致只读到 build 时的环境变量 */
 export const dynamic = 'force-dynamic'
@@ -44,9 +45,11 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: browserGoogleClientIdScript() }} />
       </head>
       <body className={`${inter.variable} antialiased`}>
-        <main className="min-h-screen">
-          {children}
-        </main>
+        <Providers>
+          <main className="min-h-screen">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   )

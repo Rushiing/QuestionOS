@@ -1,77 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiPath } from '../lib/runtime-config';
+import { useAuth } from './AuthProvider';
 
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  avatar?: string;
-}
-
-export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  useEffect(() => {
-    let mounted = true;
-    const bootstrap = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        if (mounted) setLoading(false);
-        return;
-      }
-      try {
-        const res = await fetch(apiPath('/api/auth/me'), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) {
-          throw new Error('unauthorized');
-        }
-        const data = await res.json();
-        const me = data?.user as User | undefined;
-        if (!me) throw new Error('invalid user');
-        localStorage.setItem('user', JSON.stringify(me));
-        if (mounted) setUser(me);
-      } catch {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        if (mounted) setUser(null);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    bootstrap();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const logout = async () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        await fetch(apiPath('/api/auth/logout'), {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch {
-        // ignore network failure on best-effort logout
-      }
-    }
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-    router.push('/');
-  };
-
-  return { user, loading, logout, setUser };
-}
+export { useAuth } from './AuthProvider';
 
 export function AuthButton() {
   const { user, loading, logout } = useAuth();
@@ -116,8 +49,8 @@ export function AuthButton() {
 
       {showMenu && (
         <>
-          <div 
-            className="fixed inset-0 z-10" 
+          <div
+            className="fixed inset-0 z-10"
             onClick={() => setShowMenu(false)}
           ></div>
           <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-2 z-20">
@@ -140,7 +73,7 @@ export function AuthButton() {
             <button
               onClick={() => {
                 setShowMenu(false);
-                logout();
+                void logout();
               }}
               className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
             >
