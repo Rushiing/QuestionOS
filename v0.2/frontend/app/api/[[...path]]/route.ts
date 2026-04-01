@@ -15,7 +15,8 @@ async function proxy(request: NextRequest, pathSegments: string[] | undefined) {
   const sub = pathSegments?.length ? pathSegments.join('/') : '';
   const apiPath = sub ? `/api/${sub}` : '/api';
   const src = new URL(request.url);
-  const target = `${backendOrigin()}${apiPath}${src.search}`;
+  const origin = backendOrigin();
+  const target = `${origin}${apiPath}${src.search}`;
 
   const headers = new Headers();
   request.headers.forEach((value, key) => {
@@ -35,13 +36,26 @@ async function proxy(request: NextRequest, pathSegments: string[] | undefined) {
     init.duplex = 'half';
   }
 
-  const res = await fetch(target, init);
-  const outHeaders = new Headers(res.headers);
-  return new Response(res.body, {
-    status: res.status,
-    statusText: res.statusText,
-    headers: outHeaders,
-  });
+  try {
+    const res = await fetch(target, init);
+    const outHeaders = new Headers(res.headers);
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: outHeaders,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[api-proxy] fetch failed', { target, originConfigured: origin, message: msg });
+    return Response.json(
+      {
+        error: 'UPSTREAM_UNREACHABLE',
+        message: msg,
+        hint: 'Check frontend INTERNAL_API_URL / NEXT_PUBLIC_API_URL points to a URL reachable from the Next.js container (e.g. backend public https URL).',
+      },
+      { status: 502 }
+    );
+  }
 }
 
 type Ctx = { params: { path?: string[] } };
