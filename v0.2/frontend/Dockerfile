@@ -7,6 +7,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Git 不跟踪空目录；保证 builder 内存在 public，否则 runner 阶段 COPY public 会失败
+RUN mkdir -p public
 RUN npm run build
 
 FROM node:20-alpine AS runner
