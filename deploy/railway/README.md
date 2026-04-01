@@ -53,7 +53,7 @@ QUESTIONOS_LLM_MODEL=<your-model-name>
 RAILWAY_DOCKERFILE_PATH=Dockerfile.railway-frontend
 ```
 
-4. 再加前端运行变量：
+4. 再加前端运行变量（**运行时**生效即可；代理在 `app/api/[[...path]]` 里读 `INTERNAL_API_URL`，不必为 rewrite 在构建期注入）：
 
 ```bash
 NEXT_PUBLIC_API_URL=https://<your-backend-domain>
@@ -61,6 +61,8 @@ INTERNAL_API_URL=https://<your-backend-domain>
 NEXT_PUBLIC_API_VERSION=1.1
 NEXT_PUBLIC_SANDBOX_TOKEN=<same-as-backend-token>
 ```
+
+两处后端地址建议一致（公网 `https://…up.railway.app` 或同项目 **Private Networking** 的 `http://<后端服务名>.railway.internal:<端口>`，以前端容器能 `fetch` 通为准）。
 
 5. **Generate Domain**，得到前端地址；把后端 `QUESTIONOS_ALLOWED_ORIGINS` 改成该前端 origin（含 `https://`），**Redeploy** 后端。
 

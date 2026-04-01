@@ -1,11 +1,21 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { API_BASE_URL } from './runtime-config';
 
-// API基础配置
+function axiosApiBase(): string {
+  if (typeof window !== 'undefined') {
+    return '/api';
+  }
+  const base = (
+    process.env.INTERNAL_API_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    API_BASE_URL
+  ).replace(/\/$/, '');
+  return `${base}/api`;
+}
 
-// 创建axios实例
+// 创建axios实例（浏览器走同源 /api，由 Next 代理到 Java）
 const apiClient: AxiosInstance = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
+  baseURL: axiosApiBase(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

@@ -1,18 +1,7 @@
 /** @type {import('next').NextConfig} */
-// 浏览器端用 NEXT_PUBLIC_API_URL（公网或域名）；服务端 rewrite 默认走本机 Java，避免 SSR 绕公网。
-const publicApi = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-const internalApi = process.env.INTERNAL_API_URL || publicApi;
-
+// 浏览器侧 API 走同源 /api/*，由 app/api/[[...path]]/route.ts 在运行时转发到后端（避免 rewrites 在 build 时被写死成 localhost 导致线上 502）。
 const nextConfig = {
   reactStrictMode: true,
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${internalApi}/api/:path*`,
-      },
-    ];
-  },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
