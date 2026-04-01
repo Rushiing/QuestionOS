@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AuthButton } from '../../components/AuthButton';
+import { AuthButton, useAuth } from '../../components/AuthButton';
 import { AgentInstance, AgentOnboardingPacket, sandboxClient } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 
@@ -116,6 +116,7 @@ const SHOW_EMBEDDED_CONNECTED_AGENTS_CARD = false;
 
 export default function ConsultPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -150,6 +151,15 @@ export default function ConsultPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const instanceHoverScrollRef = useRef<HTMLDivElement>(null);
+  const isLoggedIn = !!user;
+
+  const defaultAgentList: Agent[] = [
+    { id: 'auditor', name: '利益审计师', avatar: '💰', description: '量化一切，只算ROI', role: 'sandbox' },
+    { id: 'risk_officer', name: '风险预测官', avatar: '⚠️', description: '模拟最坏情况，找崩盘点', role: 'sandbox' },
+    { id: 'value_judge', name: '价值裁判', avatar: '⚖️', description: '拷问动机，防止异化', role: 'sandbox' },
+    { id: 'integrator', name: '首席整合官', avatar: '🏛️', description: '收束冲突，输出决策沙盘', role: 'sandbox' },
+    { id: 'third-party-adapter', name: '外聘 Agent', avatar: '🧩', description: 'OpenClaw 等外部 Agent', role: 'third-party' },
+  ];
 
   const thirdPartyIdSet = useMemo(
     () => new Set(instances.map((i) => i.agentId)),
@@ -204,23 +214,14 @@ export default function ConsultPage() {
 
   // 获取 Agent 能力 & 读取传入的问题
   useEffect(() => {
+    setAgents(defaultAgentList);
     sandboxClient.getCapabilities()
-      .then(() => {
-        const agentList: Agent[] = [
-          { id: 'auditor', name: '利益审计师', avatar: '💰', description: '量化一切，只算ROI', role: 'sandbox' },
-          { id: 'risk_officer', name: '风险预测官', avatar: '⚠️', description: '模拟最坏情况，找崩盘点', role: 'sandbox' },
-          { id: 'value_judge', name: '价值裁判', avatar: '⚖️', description: '拷问动机，防止异化', role: 'sandbox' },
-          { id: 'integrator', name: '首席整合官', avatar: '🏛️', description: '收束冲突，输出决策沙盘', role: 'sandbox' },
-          { id: 'third-party-adapter', name: '外聘 Agent', avatar: '🧩', description: 'OpenClaw 等外部 Agent', role: 'third-party' },
-        ];
-        setAgents(agentList);
-        setLoadingAgents(false);
-      })
+      .then(() => setAgents(defaultAgentList))
       .catch(err => {
         console.error('Failed to fetch agent capabilities:', err);
-        setAgents([
-          { id: 'auditor', name: '利益审计师', avatar: '💰', description: '量化一切，只算ROI', role: 'sandbox' },
-        ]);
+        setAgents(defaultAgentList);
+      })
+      .finally(() => {
         setLoadingAgents(false);
       });
     
@@ -311,6 +312,10 @@ export default function ConsultPage() {
   };
 
   const createOpenClawIntegration = async () => {
+    if (!isLoggedIn) {
+      setIntegrationHint('请先登录后继续三方接入。');
+      return;
+    }
     const nextId = openClawAgentId || `openclaw-${Date.now().toString().slice(-6)}`;
     const endpoint = normalizeOpenClawEndpoint(openClawEndpoint);
     setIsCreatingIntegration(true);
@@ -340,6 +345,10 @@ export default function ConsultPage() {
   };
 
   const runOpenClawConnectivityTest = async () => {
+    if (!isLoggedIn) {
+      setIntegrationHint('请先登录后继续三方接入。');
+      return;
+    }
     setIsTestingIntegration(true);
     setIntegrationResult(null);
     const startedAt = Date.now();
@@ -399,6 +408,10 @@ export default function ConsultPage() {
   };
 
   const generateOneClickOnboarding = async () => {
+    if (!isLoggedIn) {
+      setIntegrationHint('请先登录后继续三方接入。');
+      return;
+    }
     setIsGeneratingOnboardingPacket(true);
     setIntegrationHint('');
     try {
@@ -753,7 +766,15 @@ export default function ConsultPage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => setIntegrationEntryOpen((v) => !v)}
+                        onClick={() => {
+                          if (authLoading) return;
+                          if (!isLoggedIn) {
+                            setIntegrationHint('请先登录后继续三方接入。');
+                            router.push('/login');
+                            return;
+                          }
+                          setIntegrationEntryOpen((v) => !v);
+                        }}
                         className="flex flex-col items-center min-w-[4.5rem] rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                       >
                         <div
@@ -775,6 +796,11 @@ export default function ConsultPage() {
                 <div className="mt-5 mx-auto max-w-xl bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900">
                   <div className="font-semibold mb-2">OpenClaw Agent 接入台</div>
                   <p className="mb-3">推荐一键接入：生成任务包 → 发给 Agent 自动完成 → 回来点联通测试。</p>
+                  {!isLoggedIn && (
+                    <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      当前未登录：可查看说明，但三方接入操作需要登录后继续。
+                    </div>
+                  )}
                   <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     线上环境请填写「后端服务器可访问」的真实 endpoint / API Key / model（第三方模型提供方参数）。
                     这里的 API Key 与 QuestionOS 的 sandbox token 不同，不要混用。
@@ -791,24 +817,28 @@ export default function ConsultPage() {
                       value={openClawAgentId}
                       onChange={(e) => setOpenClawAgentId(e.target.value)}
                       placeholder="Agent ID（留空可自动生成）"
+                      disabled={!isLoggedIn}
                       className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
                     />
                     <input
                       value={openClawEndpoint}
                       onChange={(e) => setOpenClawEndpoint(e.target.value)}
                       placeholder="OpenClaw endpoint"
+                      disabled={!isLoggedIn}
                       className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
                     />
                     <input
                       value={openClawApiKey}
                       onChange={(e) => setOpenClawApiKey(e.target.value)}
                       placeholder="OpenClaw API Key（例如 7182...）"
+                      disabled={!isLoggedIn}
                       className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
                     />
                     <input
                       value={openClawModel}
                       onChange={(e) => setOpenClawModel(e.target.value)}
                       placeholder="OpenClaw model"
+                      disabled={!isLoggedIn}
                       className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
                     />
                   </div>
@@ -816,14 +846,14 @@ export default function ConsultPage() {
                   <div className="flex flex-wrap gap-2 mb-3">
                     <button
                       onClick={generateOneClickOnboarding}
-                      disabled={isGeneratingOnboardingPacket}
+                      disabled={!isLoggedIn || isGeneratingOnboardingPacket}
                       className="px-3 py-1.5 rounded-lg bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50"
                     >
                       {isGeneratingOnboardingPacket ? '生成中...' : '一键生成接入任务（复制给 Agent）'}
                     </button>
                     <button
                       onClick={createOpenClawIntegration}
-                      disabled={isCreatingIntegration}
+                      disabled={!isLoggedIn || isCreatingIntegration}
                       className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
                     >
                       {isCreatingIntegration ? '创建中...' : '创建 OpenClaw 接入'}
@@ -836,14 +866,14 @@ export default function ConsultPage() {
                     </button>
                     <button
                       onClick={loadInstances}
-                      disabled={loadingInstances}
+                      disabled={!isLoggedIn || loadingInstances}
                       className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
                     >
                       {loadingInstances ? '刷新中...' : '刷新实例面板'}
                     </button>
                     <button
                       onClick={runOpenClawConnectivityTest}
-                      disabled={isTestingIntegration}
+                      disabled={!isLoggedIn || isTestingIntegration}
                       className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
                     >
                       {isTestingIntegration ? '测试中...' : '运行联通测试'}
