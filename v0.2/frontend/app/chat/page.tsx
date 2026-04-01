@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,6 +18,15 @@ const EXAMPLE_QUESTIONS = [
   "团队有两个技术方案，如何评估选择？",
   "最近工作效率很低，总是拖延，怎么办？",
 ];
+
+/** 浏览器刷新（F5 / 地址栏回车刷新等），非从站内路由进入 */
+function isPageReload(): boolean {
+  if (typeof window === 'undefined' || typeof performance === 'undefined') return false;
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  if (nav?.type === 'reload') return true;
+  const legacy = performance as Performance & { navigation?: { type: number } };
+  return legacy.navigation?.type === 1;
+}
 
 // 提取 **问题** 格式的内容
 function extractQuestions(content: string): string[] {
@@ -466,6 +475,13 @@ function ChatPageContent() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState('');
   const lastSeqRef = useRef<number>(0);
+
+  // 刷新 /chat 时回到首页（避免无历史消息时只剩「临时欢迎态」）
+  useLayoutEffect(() => {
+    if (isPageReload()) {
+      router.replace('/');
+    }
+  }, [router]);
 
   // 从 URL 读取 sessionId（v1.1 状态接口不返回历史消息）
   useEffect(() => {
