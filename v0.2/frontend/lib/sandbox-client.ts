@@ -58,6 +58,27 @@ export interface AgentOnboardingPacket {
   securityNote: string;
 }
 
+export interface OnboardingJobCreateResult {
+  jobId: string;
+  submitToken: string;
+  status: string;
+  instructionUrl: string;
+  submitUrl: string;
+  statusUrl: string;
+}
+
+export interface OnboardingJobStatus {
+  jobId: string;
+  status: string;
+  message: string;
+  agentId: string;
+  provider: string;
+  endpoint: string;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const sandboxClient = {
   createSession: async (mode: SessionMode, question: string): Promise<string> => {
     const data = await fetchJson<{ sessionId: string }>('/api/v1/sandbox/sessions', {
@@ -153,6 +174,23 @@ export const sandboxClient = {
 
   getOnboardingPacket: async (): Promise<AgentOnboardingPacket> =>
     fetchJson<AgentOnboardingPacket>('/api/v1/agents/onboarding-packet', {
+      method: 'GET',
+      headers: buildSandboxHeaders(),
+      retries: 2,
+    }),
+
+  createOnboardingJob: async (): Promise<OnboardingJobCreateResult> =>
+    fetchJson<OnboardingJobCreateResult>('/api/v1/agents/onboarding-jobs', {
+      method: 'POST',
+      headers: buildSandboxHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({}),
+      retries: 0,
+    }),
+
+  getOnboardingJobStatus: async (jobId: string): Promise<OnboardingJobStatus> =>
+    fetchJson<OnboardingJobStatus>(`/api/v1/agents/onboarding-jobs/${jobId}/status`, {
       method: 'GET',
       headers: buildSandboxHeaders(),
       retries: 2,

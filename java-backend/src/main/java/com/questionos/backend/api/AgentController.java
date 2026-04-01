@@ -3,6 +3,7 @@ package com.questionos.backend.api;
 import com.questionos.backend.integrations.AgentRegistryService;
 import com.questionos.backend.governance.AuditService;
 import com.questionos.backend.integrations.OpenClawInvokeService;
+import com.questionos.backend.service.OnboardingJobService;
 import com.questionos.backend.service.SessionService;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,12 +29,14 @@ public class AgentController {
     private final SessionService sessionService;
     private final AuditService auditService;
     private final OpenClawInvokeService invokeService;
+    private final OnboardingJobService onboardingJobService;
 
-    public AgentController(AgentRegistryService registryService, SessionService sessionService, AuditService auditService, OpenClawInvokeService invokeService) {
+    public AgentController(AgentRegistryService registryService, SessionService sessionService, AuditService auditService, OpenClawInvokeService invokeService, OnboardingJobService onboardingJobService) {
         this.registryService = registryService;
         this.sessionService = sessionService;
         this.auditService = auditService;
         this.invokeService = invokeService;
+        this.onboardingJobService = onboardingJobService;
     }
 
     public record RegisterAgentRequest(
@@ -44,6 +48,24 @@ public class AgentController {
             String model
     ) {}
     public record RegisterAgentResponse(String agentId, String status) {}
+    public record CreateOnboardingJobResponse(
+            String jobId,
+            String submitToken,
+            String status,
+            String instructionUrl,
+            String submitUrl,
+            String statusUrl
+    ) {}
+    public record SubmitOnboardingJobRequest(
+            @NotBlank String submitToken,
+            @NotBlank String agentId,
+            @NotBlank String provider,
+            @NotBlank String endpoint,
+            String scope,
+            String apiKey,
+            String model,
+            Boolean runProbe
+    ) {}
 
     @PostMapping("/register")
     public ResponseEntity<RegisterAgentResponse> register(@RequestBody RegisterAgentRequest request, ServerHttpRequest httpRequest) {
@@ -95,6 +117,125 @@ public class AgentController {
                 ),
                 "securityNote", "写入 apiKey 前请先进行用户确认；禁止把密钥回显到公开聊天。"
         ));
+    }
+
+    @PostMapping("/onboarding-jobs")
+    public ResponseEntity<CreateOnboardingJobResponse> createOnboardingJob(ServerHttpRequest request) {
+        var job = onboardingJobService.create();
+        String base = baseUrl(request);
+        return ResponseEntity.ok(new CreateOnboardingJobResponse(
+                job.jobId(),
+                job.submitToken(),
+                job.status().name(),
+                base + "/api/v1/agents/onboarding-jobs/" + job.jobId(),
+                base + "/api/v1/agents/onboarding-jobs/" + job.jobId() + "/submit",
+                base + "/api/v1/agents/onboarding-jobs/" + job.jobId() + "/status"
+        ));
+    }
+
+    @GetMapping("/onboarding-jobs/{jobId}")
+    public ResponseEntity<Map<String, Object>> onboardingJobInstruction(@PathVariable String jobId, ServerHttpRequest request) {
+        return onboardingJobService.find(jobId)
+                .map(job -> {
+                    String base = baseUrl(request);
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "version", "qos-agent-onboarding-job/v1",
+                            "jobId", job.jobId(),
+                            "goal", "请你作为 OpenClaw 接入代理，自动完成注册并探活。",
+                            "auth", Map.of("submitToken", job.submitToken()),
+                            "endpoints", Map.of(
+                                    "submit", base + "/api/v1/agents/onboarding-jobs/" + job.jobId() + "/submit",
+                                    "status", base + "/api/v1/agents/onboarding-jobs/" + job.jobId() + "/status",
+                                    "capabilities", base + "/api/v1/agents/capabilities",
+                                    "instances", base + "/api/v1/agents/instances"
+                            ),
+                            "submitPayloadSchema", Map.of(
+                                    "submitToken", "required",
+                                    "agentId", "required",
+                                    "provider", "required, OpenClaw",
+                                    "endpoint", "required",
+                                    "scope", "optional, default sandbox:invoke",
+                                    "apiKey", "optional",
+                                    "model", "optional",
+                                    "runProbe", "optional, default true"
+                            ),
+                            "successCriteria", List.of(
+                                    "status 最终为 VERIFIED",
+                                    "message 包含联通成功"
+                            )
+                    ));
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/onboarding-jobs/{jobId}/submit")
+    public ResponseEntity<Map<String, Object>> submitOnboardingJob(
+            @PathVariable String jobId,
+            @RequestBody SubmitOnboardingJobRequest request,
+            ServerHttpRequest httpRequest
+    ) {
+        var existing = onboardingJobService.find(jobId);
+        if (existing.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!existing.get().submitToken().equals(request.submitToken())) {
+            return ResponseEntity.status(403).body(Map.of("status", "forbidden", "message", "submitToken 无效"));
+        }
+        onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.SUBMITTED, "Agent 已提交接入信息", request.agentId(), request.provider(), request.endpoint(), request.model());
+        String scope = request.scope() == null || request.scope().isBlank() ? "sandbox:invoke" : request.scope();
+        registryService.register(request.agentId(), request.provider(), request.endpoint(), scope, request.apiKey(), request.model());
+        onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.REGISTERED, "接入实例创建成功，开始联通测试", request.agentId(), request.provider(), request.endpoint(), request.model());
+        auditService.record(httpRequest.getId(), "partner", "agent_register_by_job", request.agentId(), "ok");
+
+        boolean needProbe = request.runProbe() == null || request.runProbe();
+        if (!needProbe) {
+            onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.REGISTERED, "接入实例创建成功（跳过联通测试）", request.agentId(), request.provider(), request.endpoint(), request.model());
+            return ResponseEntity.ok(Map.of("status", "registered", "jobId", jobId));
+        }
+
+        String probeText;
+        try {
+            probeText = invokeService
+                    .invokeAgent(
+                            new AgentRegistryService.RegisteredAgent(
+                                    request.agentId(),
+                                    request.provider(),
+                                    request.endpoint(),
+                                    scope,
+                                    request.apiKey(),
+                                    request.model(),
+                                    java.time.Instant.now()
+                            ),
+                            "sess_probe_" + jobId,
+                            1,
+                            "请回复：联通成功"
+                    )
+                    .block(Duration.ofSeconds(20));
+            String msg = (probeText == null || probeText.isBlank()) ? "联通成功（返回为空）" : "联通成功：" + trimForUi(probeText, 120);
+            onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.VERIFIED, msg, request.agentId(), request.provider(), request.endpoint(), request.model());
+            return ResponseEntity.ok(Map.of("status", "verified", "jobId", jobId, "message", msg));
+        } catch (Exception e) {
+            String msg = "联通失败：" + e.getMessage();
+            onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.FAILED, msg, request.agentId(), request.provider(), request.endpoint(), request.model());
+            return ResponseEntity.status(502).body(Map.of("status", "failed", "jobId", jobId, "message", msg));
+        }
+    }
+
+    @GetMapping("/onboarding-jobs/{jobId}/status")
+    public ResponseEntity<Map<String, Object>> onboardingJobStatus(@PathVariable String jobId) {
+        return onboardingJobService.find(jobId)
+                .map(job -> ResponseEntity.ok(Map.<String, Object>of(
+                        "jobId", job.jobId(),
+                        "status", job.status().name(),
+                        "message", job.message(),
+                        "agentId", job.agentId() == null ? "" : job.agentId(),
+                        "provider", job.provider() == null ? "" : job.provider(),
+                        "endpoint", job.endpoint() == null ? "" : job.endpoint(),
+                        "model", job.model() == null ? "" : job.model(),
+                        "createdAt", job.createdAt().toString(),
+                        "updatedAt", job.updatedAt().toString()
+                )))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/instances")
@@ -163,5 +304,16 @@ public class AgentController {
         boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
                 || ("https".equalsIgnoreCase(scheme) && port == 443);
         return defaultPort ? scheme + "://" + host : scheme + "://" + host + ":" + port;
+    }
+
+    private static String trimForUi(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        String t = text.replace('\r', ' ').replace('\n', ' ').trim();
+        if (t.length() <= max) {
+            return t;
+        }
+        return t.substring(0, max) + "...";
     }
 }

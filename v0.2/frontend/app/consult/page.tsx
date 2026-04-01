@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AuthButton, useAuth } from '../../components/AuthButton';
-import { AgentInstance, AgentOnboardingPacket, sandboxClient } from '../../lib/sandbox-client';
+import { AgentInstance, OnboardingJobStatus, sandboxClient } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 
 interface Agent {
@@ -133,7 +133,10 @@ export default function ConsultPage() {
   const [isCreatingIntegration, setIsCreatingIntegration] = useState(false);
   const [isTestingIntegration, setIsTestingIntegration] = useState(false);
   const [integrationHint, setIntegrationHint] = useState('');
-  const [onboardingPacket, setOnboardingPacket] = useState<AgentOnboardingPacket | null>(null);
+  const [onboardingJobId, setOnboardingJobId] = useState<string | null>(null);
+  const [onboardingJobToken, setOnboardingJobToken] = useState<string | null>(null);
+  const [onboardingInstructionUrl, setOnboardingInstructionUrl] = useState<string | null>(null);
+  const [onboardingJobStatus, setOnboardingJobStatus] = useState<OnboardingJobStatus | null>(null);
   const [isGeneratingOnboardingPacket, setIsGeneratingOnboardingPacket] = useState(false);
   const [integrationResult, setIntegrationResult] = useState<{
     ok: boolean;
@@ -260,6 +263,36 @@ export default function ConsultPage() {
   }, [integrationEntryOpen]);
 
   useEffect(() => {
+    if (!onboardingJobId) return;
+    let cancelled = false;
+    const doneStatus = new Set(['VERIFIED', 'FAILED']);
+    const poll = async () => {
+      try {
+        const status = await sandboxClient.getOnboardingJobStatus(onboardingJobId);
+        if (cancelled) return;
+        setOnboardingJobStatus(status);
+        if (status.agentId && status.status !== 'DRAFT' && status.status !== 'SUBMITTED') {
+          setOpenClawAgentId(status.agentId);
+        }
+        if (doneStatus.has(status.status)) {
+          setOnboardingStep(status.status === 'VERIFIED' ? 3 : 2);
+          await loadInstances();
+          return;
+        }
+      } catch {
+        // ignore transient polling errors
+      }
+      if (!cancelled) {
+        setTimeout(poll, 2500);
+      }
+    };
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardingJobId]);
+
+  useEffect(() => {
     if (!puzzleHover || !instanceHoverScrollRef.current || instances.length < 2) return;
     const el = instanceHoverScrollRef.current;
     if (el.scrollHeight <= el.clientHeight + 2) return;
@@ -293,14 +326,17 @@ export default function ConsultPage() {
     'QuestionOS 会在后端把请求转发为 OpenAI 兼容格式。',
   ].join('\n');
 
-  const buildOneClickMessage = (packet: AgentOnboardingPacket): string => [
-    '你是 OpenClaw 接入代理。请按下面机器接入包自动完成 QuestionOS 三方接入：',
-    '1) 先生成唯一 agentId（openclaw-xxxxxx）；2) 仅在写入密钥前向我确认一次；',
-    '3) 调用 register/instances/invoke 完成联通验证；4) 返回结果摘要与失败原因。',
+  const buildOneClickMessage = (jobId: string, token: string, instructionUrl: string): string => [
+    '你是 OpenClaw 接入代理。请执行本次 QuestionOS 接入委托：',
+    `- jobId: ${jobId}`,
+    '- 要求：自动决定并填写 agentId/provider/endpoint/apiKey/model，完成注册与联通测试。',
+    '- 规则：写入密钥前先向我确认一次，不要在公开消息里泄露密钥。',
     '',
-    '```json',
-    JSON.stringify(packet, null, 2),
-    '```',
+    '请先读取机器说明（包含 submit endpoint 与 payload schema）：',
+    instructionUrl,
+    '',
+    '提交时使用 submitToken：',
+    token,
   ].join('\n');
 
   const normalizeOpenClawEndpoint = (value: string): string => {
@@ -415,11 +451,14 @@ export default function ConsultPage() {
     setIsGeneratingOnboardingPacket(true);
     setIntegrationHint('');
     try {
-      const packet = await sandboxClient.getOnboardingPacket();
-      setOnboardingPacket(packet);
-      const text = buildOneClickMessage(packet);
+      const job = await sandboxClient.createOnboardingJob();
+      setOnboardingJobId(job.jobId);
+      setOnboardingJobToken(job.submitToken);
+      setOnboardingInstructionUrl(job.instructionUrl);
+      setOnboardingJobStatus(null);
+      const text = buildOneClickMessage(job.jobId, job.submitToken, job.instructionUrl);
       await navigator.clipboard.writeText(text);
-      setIntegrationHint('已复制「一键接入任务」到剪贴板，可直接发给 OpenClaw Agent 执行。');
+      setIntegrationHint('已复制「接入委托单」到剪贴板，发给 OpenClaw Agent 后将自动回填并联通。');
       setOnboardingStep(2);
     } catch (e: unknown) {
       setIntegrationHint(`生成失败：${e instanceof Error ? e.message : '请稍后重试。'}`);
@@ -795,7 +834,7 @@ export default function ConsultPage() {
               {integrationEntryOpen && (
                 <div className="mt-5 mx-auto max-w-xl bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900">
                   <div className="font-semibold mb-2">OpenClaw Agent 接入台</div>
-                  <p className="mb-3">推荐一键接入：生成任务包 → 发给 Agent 自动完成 → 回来点联通测试。</p>
+                  <p className="mb-3">推荐一键接入：创建委托单 → 发给 Agent 自动执行 → 本页自动更新结果。</p>
                   {!isLoggedIn && (
                     <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                       当前未登录：可查看说明，但三方接入操作需要登录后继续。
@@ -849,7 +888,7 @@ export default function ConsultPage() {
                       disabled={!isLoggedIn || isGeneratingOnboardingPacket}
                       className="px-3 py-1.5 rounded-lg bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50"
                     >
-                      {isGeneratingOnboardingPacket ? '生成中...' : '一键生成接入任务（复制给 Agent）'}
+                      {isGeneratingOnboardingPacket ? '生成中...' : '创建接入委托（复制给 Agent）'}
                     </button>
                     <button
                       onClick={createOpenClawIntegration}
@@ -881,10 +920,19 @@ export default function ConsultPage() {
                   </div>
 
                   <pre className="text-xs p-3 rounded bg-white border border-indigo-200 text-indigo-900 overflow-x-auto whitespace-pre-wrap mb-2">{openClawConfigText}</pre>
-                  {onboardingPacket && (
+                  {onboardingJobId && onboardingJobToken && onboardingInstructionUrl && (
                     <pre className="text-xs p-3 rounded bg-white border border-indigo-200 text-indigo-900 overflow-x-auto whitespace-pre-wrap mb-2">
-{buildOneClickMessage(onboardingPacket)}
+{buildOneClickMessage(onboardingJobId, onboardingJobToken, onboardingInstructionUrl)}
                     </pre>
+                  )}
+                  {onboardingJobStatus && (
+                    <div className="mt-2 text-xs rounded-lg p-2 border bg-indigo-50 text-indigo-800 border-indigo-200">
+                      <div>委托状态：{onboardingJobStatus.status}</div>
+                      <div className="mt-1">说明：{onboardingJobStatus.message}</div>
+                      {onboardingJobStatus.agentId && (
+                        <div className="mt-1">Agent：{onboardingJobStatus.agentId} ({onboardingJobStatus.provider || '-'})</div>
+                      )}
+                    </div>
                   )}
 
                   {integrationHint && <p className="mt-1 text-xs text-indigo-700">{integrationHint}</p>}
