@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiPath } from './runtime-config';
+import { apiPath } from './runtime-config';
 import { buildSandboxHeaders } from './http';
 
 export interface SseEvent {
@@ -15,13 +15,7 @@ export interface StreamSseOptions {
 }
 
 export const streamSse = async (options: StreamSseOptions): Promise<void> => {
-  // 浏览器走同源 /api → Next 运行时代理；避免直连 NEXT_PUBLIC_API_URL（生产 CORS / 与 fetchJson 行为一致）
-  const streamUrl =
-    typeof window !== 'undefined' && options.path.startsWith('/api/')
-      ? options.path
-      : options.path.startsWith('/api/')
-        ? `${API_BASE_URL}${options.path}`
-        : apiPath(options.path);
+  const streamUrl = apiPath(options.path);
   options.onDebug?.(`[sse] connect ${streamUrl} lastEventId=${options.lastEventId ?? 0}`);
   let response: Response;
   try {
