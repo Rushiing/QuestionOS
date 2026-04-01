@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AuthButton } from '../../components/AuthButton';
-import { AgentInstance, sandboxClient } from '../../lib/sandbox-client';
+import { AgentInstance, AgentOnboardingPacket, sandboxClient } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 
 interface Agent {
@@ -132,6 +132,8 @@ export default function ConsultPage() {
   const [isCreatingIntegration, setIsCreatingIntegration] = useState(false);
   const [isTestingIntegration, setIsTestingIntegration] = useState(false);
   const [integrationHint, setIntegrationHint] = useState('');
+  const [onboardingPacket, setOnboardingPacket] = useState<AgentOnboardingPacket | null>(null);
+  const [isGeneratingOnboardingPacket, setIsGeneratingOnboardingPacket] = useState(false);
   const [integrationResult, setIntegrationResult] = useState<{
     ok: boolean;
     firstChunkMs?: number;
@@ -290,6 +292,16 @@ export default function ConsultPage() {
     'QuestionOS 会在后端把请求转发为 OpenAI 兼容格式。',
   ].join('\n');
 
+  const buildOneClickMessage = (packet: AgentOnboardingPacket): string => [
+    '你是 OpenClaw 接入代理。请按下面机器接入包自动完成 QuestionOS 三方接入：',
+    '1) 先生成唯一 agentId（openclaw-xxxxxx）；2) 仅在写入密钥前向我确认一次；',
+    '3) 调用 register/instances/invoke 完成联通验证；4) 返回结果摘要与失败原因。',
+    '',
+    '```json',
+    JSON.stringify(packet, null, 2),
+    '```',
+  ].join('\n');
+
   const normalizeOpenClawEndpoint = (value: string): string => {
     const trimmed = value.trim().replace(/\/+$/, '');
     if (trimmed.endsWith('/v1/chat/completions')) {
@@ -383,6 +395,23 @@ export default function ConsultPage() {
       });
     } finally {
       setIsTestingIntegration(false);
+    }
+  };
+
+  const generateOneClickOnboarding = async () => {
+    setIsGeneratingOnboardingPacket(true);
+    setIntegrationHint('');
+    try {
+      const packet = await sandboxClient.getOnboardingPacket();
+      setOnboardingPacket(packet);
+      const text = buildOneClickMessage(packet);
+      await navigator.clipboard.writeText(text);
+      setIntegrationHint('已复制「一键接入任务」到剪贴板，可直接发给 OpenClaw Agent 执行。');
+      setOnboardingStep(2);
+    } catch (e: unknown) {
+      setIntegrationHint(`生成失败：${e instanceof Error ? e.message : '请稍后重试。'}`);
+    } finally {
+      setIsGeneratingOnboardingPacket(false);
     }
   };
 
@@ -745,7 +774,7 @@ export default function ConsultPage() {
               {integrationEntryOpen && (
                 <div className="mt-5 mx-auto max-w-xl bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900">
                   <div className="font-semibold mb-2">OpenClaw Agent 接入台</div>
-                  <p className="mb-3">3 步完成接入：创建实例 → 复制配置 → 联通测试。</p>
+                  <p className="mb-3">推荐一键接入：生成任务包 → 发给 Agent 自动完成 → 回来点联通测试。</p>
                   <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     线上环境请填写「后端服务器可访问」的真实 endpoint / API Key / model（第三方模型提供方参数）。
                     这里的 API Key 与 QuestionOS 的 sandbox token 不同，不要混用。
@@ -786,6 +815,13 @@ export default function ConsultPage() {
 
                   <div className="flex flex-wrap gap-2 mb-3">
                     <button
+                      onClick={generateOneClickOnboarding}
+                      disabled={isGeneratingOnboardingPacket}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50"
+                    >
+                      {isGeneratingOnboardingPacket ? '生成中...' : '一键生成接入任务（复制给 Agent）'}
+                    </button>
+                    <button
                       onClick={createOpenClawIntegration}
                       disabled={isCreatingIntegration}
                       className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
@@ -815,6 +851,11 @@ export default function ConsultPage() {
                   </div>
 
                   <pre className="text-xs p-3 rounded bg-white border border-indigo-200 text-indigo-900 overflow-x-auto whitespace-pre-wrap mb-2">{openClawConfigText}</pre>
+                  {onboardingPacket && (
+                    <pre className="text-xs p-3 rounded bg-white border border-indigo-200 text-indigo-900 overflow-x-auto whitespace-pre-wrap mb-2">
+{buildOneClickMessage(onboardingPacket)}
+                    </pre>
+                  )}
 
                   {integrationHint && <p className="mt-1 text-xs text-indigo-700">{integrationHint}</p>}
                   {integrationResult && (

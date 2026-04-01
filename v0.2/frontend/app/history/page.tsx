@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { sandboxClient } from '../../lib/sandbox-client';
+import { sandboxClient, type SandboxSessionSummary } from '../../lib/sandbox-client';
 import { useAuth } from '../../components/AuthButton';
 import { markInternalChatNav } from '../../lib/chat-nav';
 
@@ -36,9 +36,11 @@ export default function HistoryPage() {
   const fetchSessions = async () => {
     try {
       const sessions = await sandboxClient.listSessions();
-      const sorted = sessions.map((s: any) => ({
+      const sorted = sessions.map((s: SandboxSessionSummary) => ({
         id: s.sessionId,
-        title: `${s.mode || 'UNKNOWN'} / ${s.status || 'UNKNOWN'}`,
+        title:
+          (s.title && String(s.title).trim()) ||
+          `${s.mode || 'UNKNOWN'} · ${s.status || 'UNKNOWN'}`,
         created_at: s.createdAt,
         status: s.status,
       })).sort((a: Session, b: Session) =>

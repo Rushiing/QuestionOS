@@ -55,7 +55,8 @@ public class SandboxController {
                         s.getStatus(),
                         s.getMessageCount(),
                         s.getCreatedAt(),
-                        s.getLastActivityAt()
+                        s.getLastActivityAt(),
+                        s.getDisplayTitle()
                 ))
                 .toList();
         return ResponseEntity.ok(new SandboxDtos.SessionListResponse(items));

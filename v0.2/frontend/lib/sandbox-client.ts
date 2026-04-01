@@ -11,6 +11,8 @@ export interface SandboxSessionSummary {
   messageCount: number;
   createdAt: string;
   lastActivityAt: string;
+  /** 后端 LLM 摘要；缺失时用 mode/status 兜底 */
+  title?: string | null;
 }
 
 export interface SandboxSessionMessage {
@@ -36,6 +38,24 @@ export interface AgentInvokeResult {
   status: string;
   input: string;
   output: string;
+}
+
+export interface AgentOnboardingPacket {
+  version: string;
+  goal: string;
+  questionos: {
+    baseUrl: string;
+    capabilitiesUrl: string;
+    registerUrl: string;
+    instancesUrl: string;
+    probeTemplate: {
+      invokeUrlTemplate: string;
+      input: string;
+    };
+  };
+  registerPayloadSchema: Record<string, string>;
+  successCriteria: string[];
+  securityNote: string;
 }
 
 export const sandboxClient = {
@@ -126,6 +146,13 @@ export const sandboxClient = {
 
   getCapabilities: async (): Promise<any> =>
     fetchJson('/api/v1/agents/capabilities', {
+      method: 'GET',
+      headers: buildSandboxHeaders(),
+      retries: 2,
+    }),
+
+  getOnboardingPacket: async (): Promise<AgentOnboardingPacket> =>
+    fetchJson<AgentOnboardingPacket>('/api/v1/agents/onboarding-packet', {
       method: 'GET',
       headers: buildSandboxHeaders(),
       retries: 2,

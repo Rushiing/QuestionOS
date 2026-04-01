@@ -64,6 +64,39 @@ public class AgentController {
         return ResponseEntity.ok(sessionService.capabilities());
     }
 
+    @GetMapping("/onboarding-packet")
+    public ResponseEntity<Map<String, Object>> onboardingPacket(ServerHttpRequest request) {
+        String baseUrl = baseUrl(request);
+        return ResponseEntity.ok(Map.of(
+                "version", "qos-agent-onboarding/v1",
+                "goal", "让 OpenClaw Agent 自动完成 QuestionOS 三方接入并验证",
+                "questionos", Map.of(
+                        "baseUrl", baseUrl,
+                        "capabilitiesUrl", baseUrl + "/api/v1/agents/capabilities",
+                        "registerUrl", baseUrl + "/api/v1/agents/register",
+                        "instancesUrl", baseUrl + "/api/v1/agents/instances",
+                        "probeTemplate", Map.of(
+                                "invokeUrlTemplate", baseUrl + "/api/v1/agents/{agentId}/invoke",
+                                "input", "请回复：联通成功"
+                        )
+                ),
+                "registerPayloadSchema", Map.of(
+                        "agentId", "string, 建议唯一（如 openclaw-xxxxxx）",
+                        "provider", "OpenClaw",
+                        "endpoint", "OpenAI-compatible base url，例如 https://xxx 或 https://xxx/v1",
+                        "scope", "sandbox:invoke",
+                        "apiKey", "string, 可为空（若上游无需鉴权）",
+                        "model", "string, 可选"
+                ),
+                "successCriteria", List.of(
+                        "注册接口返回 status=registered",
+                        "instances 列表包含新 agentId",
+                        "invoke 探活返回 status=accepted 且 output 非空"
+                ),
+                "securityNote", "写入 apiKey 前请先进行用户确认；禁止把密钥回显到公开聊天。"
+        ));
+    }
+
     @GetMapping("/instances")
     public ResponseEntity<Map<String, Object>> instances() {
         List<Map<String, Object>> items = registryService.all().stream()
@@ -117,5 +150,18 @@ public class AgentController {
     @GetMapping("/audit")
     public ResponseEntity<?> audit() {
         return ResponseEntity.ok(auditService.latest(100));
+    }
+
+    private static String baseUrl(ServerHttpRequest request) {
+        var uri = request.getURI();
+        String scheme = uri.getScheme() == null ? "http" : uri.getScheme();
+        String host = uri.getHost() == null ? "localhost" : uri.getHost();
+        int port = uri.getPort();
+        if (port <= 0) {
+            return scheme + "://" + host;
+        }
+        boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
+                || ("https".equalsIgnoreCase(scheme) && port == 443);
+        return defaultPort ? scheme + "://" + host : scheme + "://" + host + ":" + port;
     }
 }

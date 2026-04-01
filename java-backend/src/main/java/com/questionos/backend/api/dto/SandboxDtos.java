@@ -47,7 +47,9 @@ public class SandboxDtos {
             SessionStatus status,
             long messageCount,
             Instant createdAt,
-            Instant lastActivityAt
+            Instant lastActivityAt,
+            /** LLM 摘要标题，失败时为截断首问 */
+            String title
     ) {}
 
     public record SessionListResponse(List<SessionListItem> sessions) {}

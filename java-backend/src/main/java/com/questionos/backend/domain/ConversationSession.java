@@ -12,6 +12,8 @@ public class ConversationSession {
     private final Instant createdAt;
     private volatile Instant lastActivityAt;
     private volatile Instant expiresAt;
+    /** LLM 生成的列表展示标题（异步写入，可能短暂为 null） */
+    private volatile String displayTitle;
     private final AtomicLong messageCount;
     private final AtomicLong turnSeq;
     /** 沙盘模式：用户每发一条消息，轮转一位 agent 发言（一问一答） */
@@ -79,5 +81,13 @@ public class ConversationSession {
 
     public long getMessageCount() {
         return messageCount.get();
+    }
+
+    public String getDisplayTitle() {
+        return displayTitle;
+    }
+
+    public void setDisplayTitle(String displayTitle) {
+        this.displayTitle = displayTitle;
     }
 }

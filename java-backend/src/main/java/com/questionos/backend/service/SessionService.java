@@ -11,6 +11,7 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -27,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 public class SessionService {
     private final AgentOrchestrator orchestrator;
+    private final SessionTitleService sessionTitleService;
     private final Map<String, ConversationSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, List<ConversationMessage>> messages = new ConcurrentHashMap<>();
     private final Map<String, List<StreamEvent>> eventStore = new ConcurrentHashMap<>();
@@ -35,18 +37,29 @@ public class SessionService {
     private final AtomicLong globalSeq = new AtomicLong(0);
     private static final Duration SESSION_TTL = Duration.ofHours(1);
 
-    public SessionService(AgentOrchestrator orchestrator) {
+    public SessionService(AgentOrchestrator orchestrator, SessionTitleService sessionTitleService) {
         this.orchestrator = orchestrator;
+        this.sessionTitleService = sessionTitleService;
     }
 
     public ConversationSession createSession(String ownerUserId, SessionMode mode, String question) {
         String sessionId = "sess_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         Instant now = Instant.now();
         ConversationSession session = new ConversationSession(sessionId, ownerUserId, mode, now, now.plus(SESSION_TTL));
+        session.setDisplayTitle(sessionTitleService.fallbackTitle(question));
         sessions.put(sessionId, session);
         messages.put(sessionId, new ArrayList<>());
         eventStore.put(sessionId, new ArrayList<>());
         sinks.put(sessionId, Sinks.many().multicast().directBestEffort());
+
+        String q = question == null ? "" : question;
+        Schedulers.boundedElastic().schedule(() -> {
+            String title = sessionTitleService.summarizeTitle(q);
+            ConversationSession s = sessions.get(sessionId);
+            if (s != null) {
+                s.setDisplayTitle(title);
+            }
+        });
 
         // 首条用户消息由 POST /messages 写入，避免与前端「创建会话后再发送」重复
         publishEvent(sessionId, 1, "session_created", "{\"status\":\"created\"}");
