@@ -1,5 +1,7 @@
 package com.questionos.backend.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,11 +17,12 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * WebFlux 里仅靠 WebFluxConfigurer#addCorsMappings 时，OPTIONS 预检往往拿不到 Access-Control-*（与 WebFilter 顺序有关）。
- * 使用 CorsWebFilter + 最高优先级，保证浏览器跨域 + Authorization / 自定义头预检通过。
+ * CorsWebFilter + {@link CorsOptionsFirstFilter} 显式 OPTIONS；并增加 Railway / 本地 pattern，避免环境变量未生效时预检失败。
  */
 @Configuration
 public class CorsConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(CorsConfig.class);
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -33,14 +36,29 @@ public class CorsConfig {
 
         CorsConfiguration config = new CorsConfiguration();
         origins.forEach(config::addAllowedOrigin);
+        config.addAllowedOriginPattern("https://*.up.railway.app");
+        config.addAllowedOriginPattern("http://localhost:*");
+        config.addAllowedOriginPattern("http://127.0.0.1:*");
+
         config.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.addAllowedHeader("*");
+        config.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type",
+                "X-API-Version",
+                "Idempotency-Key",
+                "Last-Event-ID",
+                "Accept",
+                "Origin",
+                "X-Requested-With"
+        ));
         config.addExposedHeader("X-Request-Id");
         config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
+
+        log.info("CORS: exact origins count={}, plus patterns *.up.railway.app / localhost", origins.size());
         return new CorsWebFilter(source);
     }
 }

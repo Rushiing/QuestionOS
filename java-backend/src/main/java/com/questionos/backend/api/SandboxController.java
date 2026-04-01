@@ -17,6 +17,12 @@ import java.util.Optional;
 @Validated
 @RestController
 @RequestMapping("/api/v1/sandbox/sessions")
+@CrossOrigin(
+        originPatterns = {"https://*.up.railway.app", "http://localhost:*", "http://127.0.0.1:*"},
+        allowedHeaders = {"Authorization", "Content-Type", "X-API-Version", "Idempotency-Key", "Last-Event-ID", "Accept", "Origin"},
+        methods = {RequestMethod.GET, RequestMethod.HEAD, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE, RequestMethod.OPTIONS},
+        allowCredentials = "false"
+)
 public class SandboxController {
     private final SessionService sessionService;
 
