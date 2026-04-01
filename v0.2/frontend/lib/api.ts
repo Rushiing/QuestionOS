@@ -1,5 +1,14 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { API_BASE_URL } from './runtime-config';
+import {
+  DEFAULT_FETCH_TIMEOUT_MS,
+  DEFAULT_RETRY_DELAY_MS,
+  isRetryableHttpStatus,
+} from './http';
+
+type RetryAwareConfig = AxiosRequestConfig & { __qosRetryCount?: number };
+
+const AXIOS_GET_MAX_RETRIES = 2;
 
 function axiosApiBase(): string {
   if (typeof window !== 'undefined') {
@@ -16,7 +25,7 @@ function axiosApiBase(): string {
 // 创建axios实例（浏览器走同源 /api，由 Next 代理到 Java）
 const apiClient: AxiosInstance = axios.create({
   baseURL: axiosApiBase(),
-  timeout: 30000,
+  timeout: DEFAULT_FETCH_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -42,13 +51,31 @@ apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     return response.data;
   },
-  (error) => {
+  async (error: AxiosError) => {
+    const cfg = error.config as RetryAwareConfig | undefined;
+    const method = (cfg?.method || 'get').toUpperCase();
+    const canRetryMethod = method === 'GET' || method === 'HEAD';
+
+    if (cfg && canRetryMethod) {
+      const done = cfg.__qosRetryCount ?? 0;
+      const status = error.response?.status;
+      const retryable =
+        (status != null && isRetryableHttpStatus(status)) ||
+        error.code === 'ECONNABORTED' ||
+        (!!error.request && !error.response);
+      if (retryable && done < AXIOS_GET_MAX_RETRIES) {
+        cfg.__qosRetryCount = done + 1;
+        await new Promise((r) => setTimeout(r, DEFAULT_RETRY_DELAY_MS * 2 ** done));
+        return apiClient.request(cfg);
+      }
+    }
+
     // 统一错误处理
     if (error.response) {
       // 服务器返回错误状态码
       const { status, data } = error.response;
       console.error(`API Error ${status}:`, data);
-      
+
       if (status === 401) {
         // 未授权，清除token并跳转登录
         if (typeof window !== 'undefined') {
@@ -63,7 +90,7 @@ apiClient.interceptors.response.use(
       // 请求配置出错
       console.error('Request Error:', error.message);
     }
-    
+
     return Promise.reject(error);
   }
 );

@@ -2,8 +2,9 @@ import { apiPath, API_VERSION, SANDBOX_FALLBACK_TOKEN } from './runtime-config';
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
-const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
-const DEFAULT_RETRY_DELAY_MS = 400;
+/** 与 axios `api.ts` 对齐的默认超时（毫秒） */
+export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
+export const DEFAULT_RETRY_DELAY_MS = 400;
 const MAX_RETRIES_CAP = 3;
 
 function sleep(ms: number): Promise<void> {
@@ -25,7 +26,7 @@ function isIdempotentMethod(method: string, init?: RequestInit): boolean {
   return false;
 }
 
-function isRetryableHttpStatus(status: number): boolean {
+export function isRetryableHttpStatus(status: number): boolean {
   return status === 408 || status === 429 || status === 502 || status === 503 || status === 504;
 }
 
