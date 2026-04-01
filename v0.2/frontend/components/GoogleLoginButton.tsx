@@ -4,15 +4,20 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiPath } from '../lib/runtime-config';
 
-// Google Client ID - 需要在 Google Cloud Console 创建
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+function resolveGoogleClientId(): string {
+  if (typeof window !== 'undefined' && window.__QOS_GOOGLE_CLIENT_ID__) {
+    return window.__QOS_GOOGLE_CLIENT_ID__.trim();
+  }
+  return (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '').trim();
+}
 
 export function GoogleLoginButton() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const handleGoogleLogin = () => {
-    if (!GOOGLE_CLIENT_ID) {
+    const googleClientId = resolveGoogleClientId();
+    if (!googleClientId) {
       alert('Google OAuth 未配置，请联系管理员');
       return;
     }
@@ -31,9 +36,10 @@ export function GoogleLoginButton() {
   };
 
   const initializeGoogleSignIn = () => {
+    const googleClientId = resolveGoogleClientId();
     try {
       window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
+        client_id: googleClientId,
         callback: handleGoogleCallback,
         auto_select: false,
       });

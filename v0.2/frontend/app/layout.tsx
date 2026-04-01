@@ -22,6 +22,16 @@ function browserApiBaseScript(): string {
   return `window.__QOS_API_BASE__=${JSON.stringify(base)};`
 }
 
+/** Google Client ID：支持运行时注入，避免 NEXT_PUBLIC_* 仅构建期生效导致空值 */
+function browserGoogleClientIdScript(): string {
+  const clientId = (
+    process.env.INTERNAL_GOOGLE_CLIENT_ID ||
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+    ''
+  ).trim()
+  return `window.__QOS_GOOGLE_CLIENT_ID__=${JSON.stringify(clientId)};`
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -31,6 +41,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <head>
         <script dangerouslySetInnerHTML={{ __html: browserApiBaseScript() }} />
+        <script dangerouslySetInnerHTML={{ __html: browserGoogleClientIdScript() }} />
       </head>
       <body className={`${inter.variable} antialiased`}>
         <main className="min-h-screen">
