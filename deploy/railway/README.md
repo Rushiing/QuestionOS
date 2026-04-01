@@ -64,9 +64,9 @@ NEXT_PUBLIC_SANDBOX_TOKEN=<same-as-backend-token>
 
 两处后端地址建议一致（公网 `https://…up.railway.app` 或同项目 **Private Networking** 的 `http://<后端服务名>.railway.internal:<端口>`，以前端容器能 `fetch` 通为准）。
 
-**说明**：生产环境若 `NEXT_PUBLIC_API_URL` 为 **公网 https**，浏览器会**直连 Java**（不再经 Next 代理），更稳。请在后端设置：
+**说明**：浏览器会优先用 **服务端注入的 `window.__QOS_API_BASE__`**（来自前端的 `INTERNAL_API_URL` 或 `NEXT_PUBLIC_API_URL`，**运行时**读取，不依赖 Docker build 是否带上 `NEXT_PUBLIC_*`）**直连 Java**。请务必在前端 Service 配置至少其一为后端公网 `https://…`。
 
-`QUESTIONOS_ALLOWED_ORIGINS=https://你的前端.up.railway.app`（与浏览器地址栏 origin 完全一致，可逗号分隔多个）。
+后端 CORS：`QUESTIONOS_ALLOWED_ORIGINS=https://你的前端.up.railway.app`（与地址栏 origin 完全一致，可逗号分隔多个）。
 
 5. **Generate Domain**，得到前端地址；把后端 `QUESTIONOS_ALLOWED_ORIGINS` 改成该前端 origin（含 `https://`），**Redeploy** 后端。
 

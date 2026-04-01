@@ -6,8 +6,18 @@ function apiBaseNormalized(): string {
   return API_BASE_URL.replace(/\/$/, '');
 }
 
-/** 生产环境浏览器直连 Java（公网 https），避免 Next 服务端代理在 Railway 上挂死/超时导致平台 502 */
-function browserUseDirectBackend(): boolean {
+/** RootLayout 注入的 window.__QOS_API_BASE__（服务端读 INTERNAL_API_URL / NEXT_PUBLIC_API_URL，与 build 内联无关） */
+function browserRuntimeApiBase(): string {
+  if (typeof window === 'undefined') return '';
+  const s = String(window.__QOS_API_BASE__ ?? '')
+    .trim()
+    .replace(/\/$/, '');
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  return '';
+}
+
+/** 构建时内联的 NEXT_PUBLIC_API_URL 为 https 时，直连 Java（Docker build 已注入变量时生效） */
+function browserUseDirectBackendFromBundle(): boolean {
   if (typeof window === 'undefined') return false;
   const b = apiBaseNormalized();
   return (
@@ -22,9 +32,9 @@ export const apiPath = (path: string): string => {
     return path;
   }
   if (typeof window !== 'undefined' && path.startsWith('/api/')) {
-    if (browserUseDirectBackend()) {
-      return `${apiBaseNormalized()}${path}`;
-    }
+    const rt = browserRuntimeApiBase();
+    if (rt) return `${rt}${path}`;
+    if (browserUseDirectBackendFromBundle()) return `${apiBaseNormalized()}${path}`;
     return path;
   }
   if (path.startsWith('/')) {
