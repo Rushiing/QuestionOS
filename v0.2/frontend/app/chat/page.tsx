@@ -4,10 +4,6 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Transformer } from 'markmap-lib';
-import { Markmap } from 'markmap-view';
 import { AuthButton } from '../../components/AuthButton';
 import { sandboxClient } from '../../lib/sandbox-client';
 interface Message {
@@ -154,8 +150,8 @@ function parseMindMapContent(content: string): { title: string; markdown: string
 function MindMapView({ markdown, title = '思维脑图' }: { markdown: string; title?: string }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const modalSvgRef = useRef<SVGSVGElement>(null);
-  const markmapRef = useRef<Markmap | null>(null);
-  const modalMarkmapRef = useRef<Markmap | null>(null);
+  const markmapRef = useRef<any>(null);
+  const modalMarkmapRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [showModal, setShowModal] = useState(false);
 
@@ -164,8 +160,14 @@ function MindMapView({ markdown, title = '思维脑图' }: { markdown: string; t
     if (!svgRef.current || !markdown) return;
     const timer = setTimeout(() => {
       if (!svgRef.current) return;
-      try {
-        const transformer = new Transformer();
+      (async () => {
+        try {
+          // 按需加载重依赖，避免进入 /chat 首屏包
+          const [{ Transformer }, { Markmap }] = await Promise.all([
+            import('markmap-lib'),
+            import('markmap-view'),
+          ]);
+          const transformer = new Transformer();
         const { root } = transformer.transform(markdown);
         if (!markmapRef.current) {
           markmapRef.current = Markmap.create(svgRef.current, undefined, root);
@@ -173,9 +175,10 @@ function MindMapView({ markdown, title = '思维脑图' }: { markdown: string; t
           markmapRef.current.setData(root);
           markmapRef.current.fit();
         }
-      } catch (e) {
-        console.error('Mindmap render error:', e);
-      }
+        } catch (e) {
+          console.error('Mindmap render error:', e);
+        }
+      })();
     }, 100);
     return () => clearTimeout(timer);
   }, [markdown]);
@@ -185,8 +188,13 @@ function MindMapView({ markdown, title = '思维脑图' }: { markdown: string; t
     if (!showModal || !modalSvgRef.current || !markdown) return;
     const timer = setTimeout(() => {
       if (!modalSvgRef.current) return;
-      try {
-        const transformer = new Transformer();
+      (async () => {
+        try {
+          const [{ Transformer }, { Markmap }] = await Promise.all([
+            import('markmap-lib'),
+            import('markmap-view'),
+          ]);
+          const transformer = new Transformer();
         const { root } = transformer.transform(markdown);
         if (!modalMarkmapRef.current) {
           modalMarkmapRef.current = Markmap.create(modalSvgRef.current, undefined, root);
@@ -194,9 +202,10 @@ function MindMapView({ markdown, title = '思维脑图' }: { markdown: string; t
           modalMarkmapRef.current.setData(root);
           modalMarkmapRef.current.fit();
         }
-      } catch (e) {
-        console.error('Modal mindmap render error:', e);
-      }
+        } catch (e) {
+          console.error('Modal mindmap render error:', e);
+        }
+      })();
     }, 100);
     return () => clearTimeout(timer);
   }, [showModal, markdown]);
