@@ -1,0 +1,12 @@
+.git
+**/.git
+**/node_modules
+**/.next
+**/target
+**/venv
+**/.venv
+**/.env
+**/.env.*
+dist
+*.log
+.DS_Store

@@ -1,9 +1,9 @@
 # QuestionOS Railway 快速部署
 
-本方案采用两个 Railway Service：
+本方案采用两个 Railway Service（推荐用仓库根的 `Dockerfile.railway-*`，避免 Railpack 误判）：
 
-- `questionos-backend` -> `java-backend`
-- `questionos-frontend` -> `v0.2/frontend`
+- 后端：`Dockerfile.railway-backend`
+- 前端：`Dockerfile.railway-frontend`
 
 ## 1. 准备仓库
 
@@ -12,9 +12,21 @@
 
 ## 2. 创建后端服务（Java）
 
-1. New Service -> GitHub Repo -> Root Directory 选择 `java-backend`。
-2. Railway 会自动识别 `Dockerfile` 并构建。
-3. 在 Variables 中配置：
+### 推荐：仓库根 + 强制 Dockerfile（避免 Railpack / start.sh）
+
+Railway 在 monorepo 里**不会**自动读子目录里的 `railway.json`（[官方说明](https://docs.railway.com/deployments/monorepo)：Config 文件路径要相对仓库根写绝对路径，否则容易退回 Railpack，去整仓找 `start.sh`）。
+
+1. 新建 Service，连接 **`Rushiing/QuestionOS`**。
+2. **Root Directory 留空**（不要填 `java-backend`，表示用整个仓库当构建上下文）。
+3. 打开该 Service → **Variables**，新增（名称区分大小写）：
+
+```bash
+RAILWAY_DOCKERFILE_PATH=Dockerfile.railway-backend
+```
+
+4. 保存后会用仓库根目录的 `Dockerfile.railway-backend` 构建（日志里应出现 `Using Dockerfile` 一类提示，而不是 Railpack）。
+
+5. 继续在 **Variables** 里配置运行所需变量：
 
 ```bash
 QUESTIONOS_SANDBOX_TOKEN=<strong-random-token>
@@ -24,13 +36,24 @@ QUESTIONOS_LLM_API_KEY=<your-llm-api-key>
 QUESTIONOS_LLM_MODEL=<your-model-name>
 ```
 
-4. 部署成功后，记下后端公网地址（如 `https://questionos-backend.up.railway.app`）。
+### 备选：只检出子目录（若你已在 UI 里配好 Config 路径）
+
+1. Root Directory 填 **`/java-backend`**（官方示例带前导 `/`）。
+2. 若仍走 Railpack：在 Service 设置里把 **Config as code** 指向 **`/java-backend/railway.json`**（路径相对仓库根）。
+
+6. **Networking** → **Generate Domain**，记下后端公网地址。
 
 ## 3. 创建前端服务（Next.js）
 
-1. New Service -> GitHub Repo -> Root Directory 选择 `v0.2/frontend`。
-2. Railway 自动识别 `Dockerfile` 构建。
-3. 在 Variables 中配置：
+1. 再建一个 Service，连接同一仓库 **`Rushiing/QuestionOS`**。
+2. **Root Directory 留空**。
+3. **Variables** 里先加：
+
+```bash
+RAILWAY_DOCKERFILE_PATH=Dockerfile.railway-frontend
+```
+
+4. 再加前端运行变量：
 
 ```bash
 NEXT_PUBLIC_API_URL=https://<your-backend-domain>
@@ -38,6 +61,8 @@ INTERNAL_API_URL=https://<your-backend-domain>
 NEXT_PUBLIC_API_VERSION=1.1
 NEXT_PUBLIC_SANDBOX_TOKEN=<same-as-backend-token>
 ```
+
+5. **Generate Domain**，得到前端地址；把后端 `QUESTIONOS_ALLOWED_ORIGINS` 改成该前端 origin（含 `https://`），**Redeploy** 后端。
 
 ## 4. 域名与 CORS
 
@@ -54,15 +79,15 @@ NEXT_PUBLIC_SANDBOX_TOKEN=<same-as-backend-token>
 
 ## 常见问题
 
-### `Railpack could not determine how to build the app`
+### `Railpack could not determine how to build the app` / `start.sh not found`
 
-说明当前 Service 的**根目录**不对，或仍在用 Railpack 猜构建方式。
+多为 **没用 Docker 构建**、Railpack 在整仓里乱猜（还会瞄到 `v0.2/start.sh`）。
 
-1. 打开该 Service → **Settings** → **Root Directory**，后端填 `java-backend`，前端填 `v0.2/frontend`（必须和本仓库子目录一致）。
-2. **Settings** → **Build** → Builder 选 **Dockerfile**（仓库里已放 `railway.json`，`build.builder` 为 `DOCKERFILE`，会覆盖为 Docker 构建）。
-3. 保存后 **Redeploy**。
+1. **Root Directory 留空**。
+2. **Variables** 设置 `RAILWAY_DOCKERFILE_PATH`：后端 `Dockerfile.railway-backend`，前端 `Dockerfile.railway-frontend`。
+3. **Redeploy**，构建日志里应出现使用 Dockerfile 的提示。
 
-不要在「整个 monorepo 根目录」上部署单个应用；根目录没有单一的 `package.json` / `pom.xml` 时，Railpack 无法自动判断。
+备选：Root Directory 用 **`/java-backend`** 或 **`/v0.2/frontend`**（带前导 `/`），并在设置里把 **Config as code** 指到 **`/java-backend/railway.json`** 或 **`/v0.2/frontend/railway.json`**（[monorepo 说明](https://docs.railway.com/deployments/monorepo)）。
 
 ### 误把 API Key 推到了公开 GitHub
 
