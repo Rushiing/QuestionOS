@@ -1,5 +1,7 @@
+# Railway/容器：必须监听 0.0.0.0 与 $PORT，否则边缘会 502「Application failed to respond」
 server:
   port: ${PORT:8080}
+  address: 0.0.0.0
 
 spring:
   application:
