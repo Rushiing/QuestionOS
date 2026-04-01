@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthButton, useAuth } from '../components/AuthButton';
+import { markInternalChatNav } from '../lib/chat-nav';
 
 const EXAMPLE_QUESTIONS = [
   "我想转行但担心沉没成本，该怎么决策？",
@@ -80,6 +81,7 @@ export default function Home() {
         router.push('/consult');
       } else {
         sessionStorage.setItem('initialQuestion', question.trim());
+        markInternalChatNav();
         router.push('/chat');
       }
     } else {
@@ -101,6 +103,7 @@ export default function Home() {
     } else {
       // 校准模式：跳转到对话页面
       sessionStorage.setItem('initialQuestion', question.trim());
+      markInternalChatNav();
       router.push('/chat');
     }
   };

@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AuthButton, useAuth } from '../../components/AuthButton';
 import { sandboxClient } from '../../lib/sandbox-client';
+import { consumeInternalChatNavMark } from '../../lib/chat-nav';
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -18,15 +19,6 @@ const EXAMPLE_QUESTIONS = [
   "团队有两个技术方案，如何评估选择？",
   "最近工作效率很低，总是拖延，怎么办？",
 ];
-
-/** 浏览器刷新（F5 / 地址栏回车刷新等），非从站内路由进入 */
-function isPageReload(): boolean {
-  if (typeof window === 'undefined' || typeof performance === 'undefined') return false;
-  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-  if (nav?.type === 'reload') return true;
-  const legacy = performance as Performance & { navigation?: { type: number } };
-  return legacy.navigation?.type === 1;
-}
 
 // 提取 **问题** 格式的内容
 function extractQuestions(content: string): string[] {
@@ -477,9 +469,10 @@ function ChatPageContent() {
   const [streamingContent, setStreamingContent] = useState('');
   const lastSeqRef = useRef<number>(0);
 
-  // 刷新 /chat 时回到首页（避免无历史消息时只剩「临时欢迎态」）
+  // 仅当不是站内跳转到 /chat 时，才回首页（覆盖刷新/直达 /chat 场景）
   useLayoutEffect(() => {
-    if (isPageReload()) {
+    const internalNav = consumeInternalChatNavMark();
+    if (!internalNav) {
       router.replace('/');
     }
   }, [router]);

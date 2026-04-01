@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { sandboxClient } from '../../lib/sandbox-client';
 import { useAuth } from '../../components/AuthButton';
+import { markInternalChatNav } from '../../lib/chat-nav';
 
 interface Session {
   id: string;
@@ -67,6 +68,7 @@ export default function HistoryPage() {
   };
 
   const handleContinue = (sessionId: string) => {
+    markInternalChatNav();
     router.push(`/chat?session=${sessionId}`);
   };
 
