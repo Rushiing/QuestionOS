@@ -12,12 +12,19 @@ export interface StreamSseOptions {
   lastEventId?: number;
   onEvent: (event: SseEvent) => boolean | void;
   onDebug?: (line: string) => void;
+  /** 仅限制「建立连接 / 收到响应头」耗时，不限制后续 SSE 流式读取 */
+  connectTimeoutMs?: number;
 }
+
+const DEFAULT_SSE_CONNECT_TIMEOUT_MS = 60_000;
 
 export const streamSse = async (options: StreamSseOptions): Promise<void> => {
   const streamUrl = apiPath(options.path);
+  const connectTimeoutMs = options.connectTimeoutMs ?? DEFAULT_SSE_CONNECT_TIMEOUT_MS;
   options.onDebug?.(`[sse] connect ${streamUrl} lastEventId=${options.lastEventId ?? 0}`);
   let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), connectTimeoutMs);
   try {
     response = await fetch(streamUrl, {
       method: 'GET',
@@ -27,11 +34,20 @@ export const streamSse = async (options: StreamSseOptions): Promise<void> => {
           ? { 'Last-Event-ID': String(options.lastEventId) }
           : {}),
       },
+      signal: controller.signal,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     options.onDebug?.(`[sse] fetch error ${message}`);
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error(`SSE 连接超时（${Math.round(connectTimeoutMs / 1000)}s）`);
+    }
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(`SSE 连接超时（${Math.round(connectTimeoutMs / 1000)}s）`);
+    }
     throw e;
+  } finally {
+    clearTimeout(timer);
   }
   options.onDebug?.(`[sse] status ${response.status}`);
   if (!response.ok || !response.body) {

@@ -47,6 +47,8 @@ export const sandboxClient = {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ mode, question }),
+      timeoutMs: 45_000,
+      retries: 0,
     });
     return data.sessionId;
   },
@@ -60,6 +62,8 @@ export const sandboxClient = {
         'Idempotency-Key': idempotencyKey,
       },
       body: JSON.stringify({ content }),
+      timeoutMs: 45_000,
+      retries: 2,
     });
   },
 
@@ -81,6 +85,7 @@ export const sandboxClient = {
     const data = await fetchJson<{ sessions: SandboxSessionSummary[] }>('/api/v1/sandbox/sessions', {
       method: 'GET',
       headers: buildSandboxHeaders(),
+      retries: 2,
     });
     return data.sessions || [];
   },
@@ -91,6 +96,7 @@ export const sandboxClient = {
       {
         method: 'GET',
         headers: buildSandboxHeaders(),
+        retries: 2,
       }
     );
     return data.messages || [];
@@ -111,6 +117,8 @@ export const sandboxClient = {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      timeoutMs: 45_000,
+      retries: 0,
     });
   },
 
@@ -120,12 +128,14 @@ export const sandboxClient = {
     fetchJson('/api/v1/agents/capabilities', {
       method: 'GET',
       headers: buildSandboxHeaders(),
+      retries: 2,
     }),
 
   listInstances: async (): Promise<AgentInstance[]> => {
     const data = await fetchJson<{ count: number; instances: AgentInstance[] }>('/api/v1/agents/instances', {
       method: 'GET',
       headers: buildSandboxHeaders(),
+      retries: 2,
     });
     return data.instances || [];
   },
@@ -142,5 +152,7 @@ export const sandboxClient = {
         turnId: 1,
         input,
       }),
+      timeoutMs: 120_000,
+      retries: 0,
     }),
 };
