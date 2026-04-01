@@ -44,6 +44,9 @@ public class AuthAndRateLimitFilter implements WebFilter {
         if (!path.startsWith("/api/v1")) {
             return chain.filter(exchange);
         }
+        if (isPublicOnboardingPath(path, exchange.getRequest().getMethod())) {
+            return chain.filter(exchange);
+        }
         // Let CORS preflight pass through without auth challenge.
         if (HttpMethod.OPTIONS.equals(exchange.getRequest().getMethod())) {
             return chain.filter(exchange);
@@ -86,6 +89,21 @@ public class AuthAndRateLimitFilter implements WebFilter {
     private String extractBearer(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) return "";
         return authHeader.substring("Bearer ".length()).trim();
+    }
+
+    /**
+     * Agent 自助接入需要外部可直接访问说明与提交接口（通过 submitToken 二次校验）。
+     */
+    private boolean isPublicOnboardingPath(String path, HttpMethod method) {
+        if (!path.startsWith("/api/v1/agents/onboarding-jobs/")) {
+            return false;
+        }
+        // 允许 agent 拉取机器说明：GET /onboarding-jobs/{jobId}
+        if (HttpMethod.GET.equals(method) && !path.endsWith("/status")) {
+            return true;
+        }
+        // 允许 agent 提交结果：POST /onboarding-jobs/{jobId}/submit
+        return HttpMethod.POST.equals(method) && path.endsWith("/submit");
     }
 
     private static class WindowCounter {
