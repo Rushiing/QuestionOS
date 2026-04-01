@@ -3,6 +3,9 @@ import type { NextRequest } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+/** POST 等短请求：避免 stream body + duplex 在部分 Node 环境挂死；并防止 fetch 无限等待导致 Railway「Application failed to respond」 */
+const MUTATING_FETCH_TIMEOUT_MS = 30_000;
+
 function backendOrigin(): string {
   const u =
     process.env.INTERNAL_API_URL ||
@@ -25,15 +28,22 @@ async function proxy(request: NextRequest, pathSegments: string[] | undefined) {
     headers.set(key, value);
   });
 
-  const init: RequestInit & { duplex?: 'half' } = {
+  const isMutating = !['GET', 'HEAD'].includes(request.method);
+
+  const init: RequestInit = {
     method: request.method,
     headers,
     redirect: 'manual',
   };
 
-  if (!['GET', 'HEAD'].includes(request.method) && request.body) {
-    init.body = request.body;
-    init.duplex = 'half';
+  if (isMutating) {
+    const bodyBuf = await request.arrayBuffer();
+    if (bodyBuf.byteLength > 0) {
+      init.body = bodyBuf;
+    }
+    headers.delete('content-length');
+    headers.delete('transfer-encoding');
+    init.signal = AbortSignal.timeout(MUTATING_FETCH_TIMEOUT_MS);
   }
 
   try {
@@ -46,14 +56,17 @@ async function proxy(request: NextRequest, pathSegments: string[] | undefined) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error('[api-proxy] fetch failed', { target, originConfigured: origin, message: msg });
+    const timedOut = msg.includes('abort') || msg.includes('AbortError') || msg.includes('TimeoutError');
+    console.error('[api-proxy] fetch failed', { target, originConfigured: origin, message: msg, timedOut });
     return Response.json(
       {
-        error: 'UPSTREAM_UNREACHABLE',
+        error: timedOut ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNREACHABLE',
         message: msg,
-        hint: 'Check frontend INTERNAL_API_URL / NEXT_PUBLIC_API_URL points to a URL reachable from the Next.js container (e.g. backend public https URL).',
+        hint: timedOut
+          ? `Backend did not respond within ${MUTATING_FETCH_TIMEOUT_MS / 1000}s. Check INTERNAL_API_URL / NEXT_PUBLIC_API_URL and that Java is up.`
+          : 'Check INTERNAL_API_URL / NEXT_PUBLIC_API_URL points to a URL reachable from the Next.js container (e.g. backend public https URL).',
       },
-      { status: 502 }
+      { status: timedOut ? 504 : 502 }
     );
   }
 }
