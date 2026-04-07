@@ -36,7 +36,7 @@ public class SessionTitleService {
     }
 
     /**
-     * 生成展示标题；LLM 不可用时回退为问题截断。
+     * 用 LLM 润色列表标题（默认关闭，见 {@code questionos.session.titleFromLlm}）；失败或未启用时应用 {@link #fallbackTitle}。
      */
     public String summarizeTitle(String userQuestion) {
         String fallback = fallbackTitle(userQuestion);

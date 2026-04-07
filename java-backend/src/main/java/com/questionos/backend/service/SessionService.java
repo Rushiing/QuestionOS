@@ -12,6 +12,7 @@ import com.questionos.backend.domain.StreamEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -36,6 +37,9 @@ public class SessionService {
     private final AgentOrchestrator orchestrator;
     private final SessionTitleService sessionTitleService;
     private final ObjectMapper objectMapper;
+
+    @Value("${questionos.session.titleFromLlm:false}")
+    private boolean sessionTitleFromLlm;
     private final Map<String, ConversationSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, List<ConversationMessage>> messages = new ConcurrentHashMap<>();
     private final Map<String, List<StreamEvent>> eventStore = new ConcurrentHashMap<>();
@@ -65,13 +69,15 @@ public class SessionService {
         sinks.put(sessionId, Sinks.many().multicast().directBestEffort());
 
         String q = question == null ? "" : question;
-        Schedulers.boundedElastic().schedule(() -> {
-            String title = sessionTitleService.summarizeTitle(q);
-            ConversationSession s = sessions.get(sessionId);
-            if (s != null) {
-                s.setDisplayTitle(title);
-            }
-        });
+        if (sessionTitleFromLlm) {
+            Schedulers.boundedElastic().schedule(() -> {
+                String title = sessionTitleService.summarizeTitle(q);
+                ConversationSession s = sessions.get(sessionId);
+                if (s != null) {
+                    s.setDisplayTitle(title);
+                }
+            });
+        }
 
         // 首条用户消息由 POST /messages 写入，避免与前端「创建会话后再发送」重复
         publishEvent(sessionId, 1, "session_created", "{\"status\":\"created\"}");
