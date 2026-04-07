@@ -527,6 +527,33 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
   );
 }
 
+/** 流式阶段占位：版式与成稿一致，不展示原始 JSON，避免「代码糊脸」 */
+function CalibrationStreamingSkeleton() {
+  return (
+    <div className="calibration-md text-sm leading-relaxed">
+      <div className="mb-3 mt-0">
+        <span className="inline-flex items-center rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-blue-500/30">
+          本轮追问
+        </span>
+      </div>
+      <div className="my-3 rounded-xl border border-blue-100/80 bg-gradient-to-br from-sky-50/90 via-white to-indigo-50/80 px-4 py-3.5 ring-1 ring-slate-100/80">
+        <div className="space-y-2.5">
+          <div className="h-4 max-w-[88%] rounded-md bg-slate-200/70 animate-pulse" />
+          <div className="h-4 w-full rounded-md bg-slate-200/60 animate-pulse" />
+          <div className="h-4 max-w-[72%] rounded-md bg-slate-200/50 animate-pulse" />
+        </div>
+      </div>
+      <div className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold text-slate-400">
+        <span className="h-4 w-1 shrink-0 rounded-full bg-slate-200 animate-pulse" aria-hidden />
+        <span className="inline-block h-4 w-28 rounded bg-slate-200/90 animate-pulse" />
+      </div>
+      <div className="h-3 max-w-md rounded bg-slate-100 animate-pulse" />
+      <p className="mt-4 text-xs text-slate-400">正在组织追问与版面…</p>
+      <span className="inline-block mt-2 animate-pulse text-slate-400">▌</span>
+    </div>
+  );
+}
+
 function ChatPageContent() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -540,8 +567,38 @@ function ChatPageContent() {
   const [showWelcome, setShowWelcome] = useState(true);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState('');
-  const [streamingDeltaRaw, setStreamingDeltaRaw] = useState('');
+  /** 模型仍在吐 token：只显示骨架，不展示原始 JSON */
+  const [streamingSkeletonActive, setStreamingSkeletonActive] = useState(false);
+  /** 非 null 时对 streamingContent 做打字机式逐字显现（与骨架衔接） */
+  const [streamingTypeTarget, setStreamingTypeTarget] = useState<string | null>(null);
   const lastSeqRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (streamingTypeTarget === null) {
+      return;
+    }
+    const full = streamingTypeTarget;
+    if (full.length === 0) {
+      setStreamingTypeTarget(null);
+      return;
+    }
+    let i = 0;
+    let raf = 0;
+    const charsPerFrame = 3;
+    const tick = () => {
+      i = Math.min(full.length, i + charsPerFrame);
+      setStreamingContent(full.slice(0, i));
+      if (i < full.length) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        setStreamingTypeTarget(null);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [streamingTypeTarget]);
 
   // 仅当不是站内跳转到 /chat 时，才回首页（覆盖刷新/直达 /chat 场景）
   useLayoutEffect(() => {
@@ -590,7 +647,8 @@ function ChatPageContent() {
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
     setStreamingContent('');
-    setStreamingDeltaRaw('');
+    setStreamingSkeletonActive(false);
+    setStreamingTypeTarget(null);
     
     try {
       let currentSessionId = sessionId;
@@ -612,12 +670,14 @@ function ChatPageContent() {
       
       setMessages((prev) => [...prev, assistantMessage]);
       setStreamingContent('');
-      setStreamingDeltaRaw('');
+      setStreamingSkeletonActive(false);
+      setStreamingTypeTarget(null);
       
     } catch (error) {
       console.error('Error:', error);
       setStreamingContent('');
-      setStreamingDeltaRaw('');
+      setStreamingSkeletonActive(false);
+      setStreamingTypeTarget(null);
     } finally {
       setIsLoading(false);
     }
@@ -626,7 +686,7 @@ function ChatPageContent() {
   // 滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, streamingDeltaRaw]);
+  }, [messages, streamingContent, streamingSkeletonActive]);
 
   // 加载初始问题
   useEffect(() => {
@@ -662,7 +722,6 @@ function ChatPageContent() {
 
     let streamDone = false;
     let chunkBuf = '';
-    let deltaBuf = '';
     let receivedModelDelta = false;
     await sandboxClient.streamTurn(sid, lastSeqRef.current, ({ eventType, eventId, dataRaw }) => {
       if (eventId && !eventId.startsWith('hb-')) {
@@ -674,21 +733,22 @@ function ChatPageContent() {
         const piece = parsed?.payload?.content || '';
         if (eventType === 'agent_delta' && piece) {
           receivedModelDelta = true;
-          deltaBuf += piece;
-          setStreamingDeltaRaw(deltaBuf);
+          setStreamingSkeletonActive(true);
         }
         if (eventType === 'agent_error' && piece) {
-          setStreamingDeltaRaw('');
+          setStreamingSkeletonActive(false);
+          setStreamingTypeTarget(null);
           chunkBuf += (chunkBuf ? '\n\n' : '') + '⚠️ ' + piece + '\n\n';
           setStreamingContent(chunkBuf);
         }
         if (eventType === 'agent_chunk') {
           if (receivedModelDelta) {
             chunkBuf = piece;
-            setStreamingDeltaRaw('');
-            setStreamingContent(piece);
+            setStreamingSkeletonActive(false);
+            setStreamingTypeTarget(piece);
           } else {
             chunkBuf += piece;
+            setStreamingTypeTarget(null);
             setStreamingContent(chunkBuf);
           }
         }
@@ -742,7 +802,8 @@ function ChatPageContent() {
     setInput('');
     setIsLoading(true);
     setStreamingContent('');
-    setStreamingDeltaRaw('');
+    setStreamingSkeletonActive(false);
+    setStreamingTypeTarget(null);
     let activeSessionId = sessionId;
     if (!activeSessionId) {
       try {
@@ -770,7 +831,8 @@ function ChatPageContent() {
           if (!activeSessionId) {
             setIsLoading(false);
             setStreamingContent('');
-            setStreamingDeltaRaw('');
+            setStreamingSkeletonActive(false);
+            setStreamingTypeTarget(null);
             return;
           }
           const msgList = await sandboxClient.listMessages(activeSessionId);
@@ -803,7 +865,8 @@ function ChatPageContent() {
         } finally {
           setIsLoading(false);
           setStreamingContent('');
-          setStreamingDeltaRaw('');
+          setStreamingSkeletonActive(false);
+          setStreamingTypeTarget(null);
         }
       })();
     }, 280000);
@@ -828,7 +891,8 @@ function ChatPageContent() {
 
       setMessages((prev) => [...prev, assistantMessage]);
       setStreamingContent('');
-      setStreamingDeltaRaw('');
+      setStreamingSkeletonActive(false);
+      setStreamingTypeTarget(null);
     } catch (error) {
       if (timedOut) return;
       console.error('Error:', error);
@@ -843,7 +907,8 @@ function ChatPageContent() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-      setStreamingDeltaRaw('');
+      setStreamingSkeletonActive(false);
+      setStreamingTypeTarget(null);
     } finally {
       clearTimeout(timeout);
       if (!timedOut) {
@@ -981,33 +1046,32 @@ function ChatPageContent() {
               );
             })}
             
-            {/* 真·流式：模型 JSON 增量（不入库的最终形态由随后 agent_chunk 覆盖） */}
-            {streamingDeltaRaw && (
+            {/* 流式阶段：先展示与成稿一致的版式骨架，不展示原始 JSON */}
+            {streamingSkeletonActive && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] bg-slate-50 border border-slate-200 text-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
-                  <p className="text-xs text-slate-500 mb-2">正在生成…</p>
-                  <pre className="text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap break-words font-mono max-h-72 overflow-y-auto">
-                    {streamingDeltaRaw}
-                  </pre>
-                  <span className="inline-block mt-1 animate-pulse text-slate-400">▌</span>
+                <div className="max-w-[80%] bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+                  <CalibrationStreamingSkeleton />
                 </div>
               </div>
             )}
 
-            {/* Streaming Content：格式化后的 Markdown（校准样式） */}
+            {/* 成稿 Markdown：delta 结束后由打字机效果逐段显现 */}
             {streamingContent && (
               <div className="flex justify-start">
                 <div className="max-w-[80%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                   <AIMessage 
                     content={streamingContent} 
                   />
-                  {!streamingDeltaRaw && <span className="animate-pulse">▌</span>}
+                  {isLoading && <span className="animate-pulse">▌</span>}
                 </div>
               </div>
             )}
             
             {/* Loading */}
-            {isLoading && !streamingContent && !streamingDeltaRaw && (
+            {isLoading &&
+              !streamingContent &&
+              !streamingSkeletonActive &&
+              streamingTypeTarget === null && (
               <div className="flex justify-start">
                 <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                   <div className="flex gap-1">
