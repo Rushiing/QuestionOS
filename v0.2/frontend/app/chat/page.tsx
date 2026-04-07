@@ -26,11 +26,6 @@ const EXAMPLE_QUESTIONS = [
   "最近工作效率很低，总是拖延，怎么办？",
 ];
 
-/** 与后端 MainCalibrateAgent 校准 Markdown 结构对齐 */
-function isCalibrationAssistantMarkdown(content: string): boolean {
-  return typeof content === 'string' && content.includes('## 本轮追问');
-}
-
 function markdownChildrenToPlainText(node: ReactNode): string {
   if (node == null || typeof node === 'boolean') return '';
   if (typeof node === 'string' || typeof node === 'number') return String(node);
@@ -519,50 +514,13 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
     return <AlchemyMessage content={content} onContinueWithQuestion={onContinueWithQuestion} />;
   }
 
-  if (isCalibrationAssistantMarkdown(content)) {
-    return (
-      <div className="calibration-md text-sm leading-relaxed">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={calibrationMarkdownComponents}>
-          {content}
-        </ReactMarkdown>
-      </div>
-    );
-  }
-
-  // 普通追问输出
+  /**
+   * 本页仅创建 CALIBRATION 会话，助手内容均应按校准样式渲染。
+   * 勿再用「## 本轮追问」做检测：首轮若模型未返回 questions，后端不会带该标题，会误走旧版 Markdown（无 h3 样式）。
+   */
   return (
-    <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code({ className, children, ...props }) {
-            const codeContent = String(children);
-            const isInline = !codeContent.includes('\n');
-            if (isInline) {
-              return <code className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-sm font-medium" {...props}>{children}</code>;
-            }
-            return <pre className="bg-gray-100 text-gray-800 p-4 rounded-xl my-3 overflow-x-auto text-sm whitespace-pre-wrap border border-gray-200"><code {...props}>{children}</code></pre>;
-          },
-          blockquote({ children }) {
-            return <blockquote className="border-l-4 border-gray-300 pl-4 py-2 my-2 bg-gray-50 rounded-r-lg text-gray-700 italic">{children}</blockquote>;
-          },
-          h2({ children }) {
-            return <h2 className="text-lg font-bold text-gray-800 mt-4 mb-2">{children}</h2>;
-          },
-          strong({ children }) {
-            return <strong className="font-bold text-gray-900">{children}</strong>;
-          },
-          ol({ children }) {
-            return <ol className="list-decimal list-inside space-y-1 my-2">{children}</ol>;
-          },
-          ul({ children }) {
-            return <ul className="list-disc list-inside space-y-1 my-2">{children}</ul>;
-          },
-          hr() {
-            return <hr className="my-4 border-gray-200" />;
-          },
-        }}
-      >
+    <div className="calibration-md text-sm leading-relaxed">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={calibrationMarkdownComponents}>
         {content}
       </ReactMarkdown>
     </div>
