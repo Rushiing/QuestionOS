@@ -86,12 +86,20 @@ public class OpenClawInvokeService {
      * - OpenAI-compatible： https://xxx 或直接带 /v1/chat/completions
      */
     public Mono<String> invokeDefaultLlm(String systemPrompt, String userMessage) {
+        return invokeDefaultLlm(systemPrompt, userMessage, "llm");
+    }
+
+    /**
+     * @param stage 日志关联用短标签，如 calibration|sess_xxx|t3、session-title、sandbox:auditor
+     */
+    public Mono<String> invokeDefaultLlm(String systemPrompt, String userMessage, String stage) {
         if (defaultLlmEndpoint == null || defaultLlmEndpoint.isBlank()) {
             return Mono.error(new IllegalStateException(
                     "未配置 questionos.llm.endpoint（QUESTIONOS_LLM_ENDPOINT 为空）。请先设置后重试。"
             ));
         }
-        return invokeOpenAICompatibleRaw(defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage);
+        return invokeOpenAICompatibleRaw(
+                defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1);
     }
 
     private Mono<String> invokeOpenAICompatible(AgentRegistryService.RegisteredAgent agent, String systemPrompt, String userMessage) {
@@ -107,30 +115,26 @@ public class OpenClawInvokeService {
 
         Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint());
 
-        return webClient.post()
-                .uri(url)
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .headers(h -> {
-                    if (!apiKey.isBlank()) {
-                        h.setBearerAuth(apiKey);
-                    }
-                })
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofSeconds(25))
-                .doOnError(e -> log.warn("OpenClaw LLM 调用失败 url={} model={}: {}", url, model, e.toString()))
-                .map(this::extractContent)
-                .map(text -> text == null || text.isBlank() ? "OpenClaw 返回为空。" : text);
+        return executeChatCompletions(
+                url,
+                body,
+                apiKey,
+                model,
+                "sandbox:" + agent.agentId(),
+                Duration.ofSeconds(25));
     }
 
+    /**
+     * @param timeoutSecondsOverride &gt;= 0 时使用该秒数作为超时；&lt; 0 时使用 {@link #defaultLlmTimeoutSeconds}
+     */
     private Mono<String> invokeOpenAICompatibleRaw(
             String endpoint,
             String apiKey,
             String model,
             String systemPrompt,
-            String userMessage
+            String userMessage,
+            String stage,
+            int timeoutSecondsOverride
     ) {
         String url = normalizeChatCompletionsUrl(endpoint);
         String useModel = (model == null || model.isBlank()) ? "custom-dogfooding/pitaya-03-20" : model;
@@ -144,14 +148,50 @@ public class OpenClawInvokeService {
 
         Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint);
 
-        Duration llmTimeout = Duration.ofSeconds(Math.max(25, defaultLlmTimeoutSeconds));
+        int effSec = timeoutSecondsOverride >= 0 ? timeoutSecondsOverride : defaultLlmTimeoutSeconds;
+        Duration llmTimeout = Duration.ofSeconds(Math.max(25, effSec));
+        return executeChatCompletions(url, body, useApiKey, useModel, stage, llmTimeout);
+    }
+
+    /**
+     * 拆耗时：httpRoundTripMs（发起到收到响应体）、extractJsonMs（解析 JSON 取 content）、之后为业务侧 format。
+     */
+    private Mono<String> executeChatCompletions(
+            String url,
+            Map<String, Object> body,
+            String apiKey,
+            String model,
+            String stage,
+            Duration timeout
+    ) {
+        final long[] subscribeAt = new long[1];
+        int sysLen = 0;
+        int userLen = 0;
+        Object msgs = body.get("messages");
+        if (msgs instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Map<?, ?> m) {
+                    String role = String.valueOf(m.get("role"));
+                    String c = m.get("content") == null ? "" : String.valueOf(m.get("content"));
+                    if ("system".equals(role)) {
+                        sysLen = c.length();
+                    } else if ("user".equals(role)) {
+                        userLen = c.length();
+                    }
+                }
+            }
+        }
+        log.info(
+                "LLM request start stage={} model={} timeoutSec={} systemChars={} userChars={} url={}",
+                stage, model, timeout.getSeconds(), sysLen, userLen, shortenUrlForLog(url));
+
         return webClient.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
                 .headers(h -> {
-                    if (!useApiKey.isBlank()) {
-                        h.setBearerAuth(useApiKey);
+                    if (apiKey != null && !apiKey.isBlank()) {
+                        h.setBearerAuth(apiKey);
                     }
                 })
                 .bodyValue(body)
@@ -164,10 +204,32 @@ public class OpenClawInvokeService {
                                                 + (errorBody.isBlank() ? "(无响应体)" : errorBody.substring(0, Math.min(1500, errorBody.length()))))))
                 )
                 .bodyToMono(String.class)
-                .timeout(llmTimeout)
-                .doOnError(e -> log.warn("默认 LLM 调用失败 url={} model={}: {}", url, useModel, e.toString()))
-                .map(this::extractContent)
+                .timeout(timeout)
+                .doOnSubscribe(s -> subscribeAt[0] = System.currentTimeMillis())
+                .doOnError(e -> {
+                    long after = subscribeAt[0] > 0 ? System.currentTimeMillis() - subscribeAt[0] : -1L;
+                    log.warn("LLM request failed stage={} model={} afterMs={} err={}", stage, model, after, e.toString());
+                })
+                .map(raw -> {
+                    long httpMs = subscribeAt[0] > 0 ? System.currentTimeMillis() - subscribeAt[0] : -1L;
+                    int rawLen = raw == null ? 0 : raw.length();
+                    long tParse = System.currentTimeMillis();
+                    String text = extractContent(raw);
+                    long extractMs = System.currentTimeMillis() - tParse;
+                    int outLen = text == null ? 0 : text.length();
+                    log.info(
+                            "LLM request done stage={} model={} httpRoundTripMs={} rawBodyChars={} extractJsonMs={} textChars={}",
+                            stage, model, httpMs, rawLen, extractMs, outLen);
+                    return text;
+                })
                 .map(text -> text == null || text.isBlank() ? "LLM 返回为空。" : text);
+    }
+
+    private static String shortenUrlForLog(String url) {
+        if (url == null || url.length() <= 96) {
+            return url;
+        }
+        return url.substring(0, 96) + "…";
     }
 
     /**

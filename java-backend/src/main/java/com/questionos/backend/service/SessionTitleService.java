@@ -41,7 +41,8 @@ public class SessionTitleService {
     public String summarizeTitle(String userQuestion) {
         String fallback = fallbackTitle(userQuestion);
         try {
-            String raw = openClawInvokeService.invokeDefaultLlm(SYSTEM_PROMPT, userQuestion == null ? "" : userQuestion)
+            String raw = openClawInvokeService.invokeDefaultLlm(
+                            SYSTEM_PROMPT, userQuestion == null ? "" : userQuestion, "session-title")
                     .block(Duration.ofSeconds(30));
             String cleaned = sanitizeTitle(raw);
             if (!cleaned.isEmpty()) {

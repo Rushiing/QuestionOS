@@ -9,6 +9,8 @@ import com.questionos.backend.domain.ConversationSession;
 import com.questionos.backend.domain.MessageRole;
 import com.questionos.backend.domain.SessionMode;
 import com.questionos.backend.domain.StreamEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -22,7 +24,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -30,6 +31,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class SessionService {
+    private static final Logger log = LoggerFactory.getLogger(SessionService.class);
+
     private final AgentOrchestrator orchestrator;
     private final SessionTitleService sessionTitleService;
     private final ObjectMapper objectMapper;
@@ -111,6 +114,13 @@ public class SessionService {
 
         List<ConversationMessage> history = List.copyOf(messages.get(sessionId));
         int sandboxRound = session.getMode() == SessionMode.SANDBOX ? session.nextSandboxSpeakerRound() : 0;
+        log.info(
+                "session agent pipeline start sessionId={} turnId={} mode={} historySize={} userChars={}",
+                sessionId,
+                turnId,
+                session.getMode(),
+                history.size(),
+                content == null ? 0 : content.length());
         AtomicReference<StringBuilder> agentReply = new AtomicReference<>(new StringBuilder());
         AtomicReference<String> activeSpeakerId = new AtomicReference<>();
         orchestrator.runPipeline(sessionId, turnId, content, session.getMode(), history, sandboxRound)

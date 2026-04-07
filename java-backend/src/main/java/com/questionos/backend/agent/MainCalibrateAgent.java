@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.questionos.backend.domain.ConversationMessage;
 import com.questionos.backend.domain.MessageRole;
 import com.questionos.backend.integrations.OpenClawInvokeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -14,6 +16,7 @@ import java.util.concurrent.TimeoutException;
 
 @Component
 public class MainCalibrateAgent implements AgentExecutor {
+    private static final Logger log = LoggerFactory.getLogger(MainCalibrateAgent.class);
     /**
      * 思维校准采用 Decision 模式，思路来自开源 skill：
      * https://github.com/riiiku/clarify-skill （Part 2: Decision 模式）
@@ -107,9 +110,32 @@ public class MainCalibrateAgent implements AgentExecutor {
             String input,
             List<ConversationMessage> history
     ) {
+        long tBuild = System.currentTimeMillis();
         String userPayload = buildDecisionPayload(history, input);
-        return invokeService.invokeDefaultLlm(CALIBRATION_PROMPT, userPayload)
-                .map(this::formatCalibrationJson)
+        long buildPayloadMs = System.currentTimeMillis() - tBuild;
+        int historySize = history == null ? 0 : history.size();
+        String stage = "calibration|" + sessionId + "|t" + turnId;
+        log.info(
+                "main-calibrate buildPayload stage={} buildPayloadMs={} userPayloadChars={} systemPromptChars={} historyMsgs={}",
+                stage,
+                buildPayloadMs,
+                userPayload.length(),
+                CALIBRATION_PROMPT.length(),
+                historySize);
+
+        return invokeService.invokeDefaultLlm(CALIBRATION_PROMPT, userPayload, stage)
+                .map(raw -> {
+                    long tf = System.currentTimeMillis();
+                    String md = formatCalibrationJson(raw);
+                    long formatMarkdownMs = System.currentTimeMillis() - tf;
+                    log.info(
+                            "main-calibrate formatMarkdown stage={} formatMarkdownMs={} rawModelChars={} markdownChars={}",
+                            stage,
+                            formatMarkdownMs,
+                            raw == null ? 0 : raw.length(),
+                            md == null ? 0 : md.length());
+                    return md;
+                })
                 .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
                 .onErrorResume(e -> Flux.fromIterable(List.of(
                                 new AgentReplyChunk("agent_error", formatInvokeFailureMessage(e)),
