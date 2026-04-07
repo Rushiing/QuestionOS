@@ -883,8 +883,8 @@ function ChatPageContent() {
               <p className="text-xs text-gray-500">
                 问题校准助手
                 {sessionId && (
-                  <span className="ml-2 text-gray-400 font-mono" title="Session ID">
-                    #{sessionId.slice(0, 8)}
+                  <span className="ml-2 text-gray-400 font-mono break-all" title={sessionId}>
+                    #{sessionId}
                   </span>
                 )}
               </p>
