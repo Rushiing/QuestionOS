@@ -1,12 +1,18 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, Suspense, type ReactNode } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AuthButton, useAuth } from '../../components/AuthButton';
 import { sandboxClient } from '../../lib/sandbox-client';
-import { consumeInternalChatNavMark } from '../../lib/chat-nav';
+import { CHAT_INTERNAL_NAV_KEY } from '../../lib/chat-nav';
+
+/**
+ * React 18 Strict Mode 下 /chat 会挂载两次：第一次 useLayoutEffect 消费掉站内导航标记后，
+ * 第二次挂载若再读 sessionStorage 会误判为「非法进入」并 replace('/')，表现为首页点击「开始」无反应。
+ */
+let chatInternalNavStrictModeGuard = false;
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -19,6 +25,105 @@ const EXAMPLE_QUESTIONS = [
   "团队有两个技术方案，如何评估选择？",
   "最近工作效率很低，总是拖延，怎么办？",
 ];
+
+/** 与后端 MainCalibrateAgent 校准 Markdown 结构对齐 */
+function isCalibrationAssistantMarkdown(content: string): boolean {
+  return typeof content === 'string' && content.includes('## 本轮追问');
+}
+
+function markdownChildrenToPlainText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(markdownChildrenToPlainText).join('');
+  if (typeof node === 'object' && 'props' in node) {
+    const el = node as React.ReactElement<{ children?: ReactNode }>;
+    return markdownChildrenToPlainText(el.props?.children);
+  }
+  return '';
+}
+
+/** 思维校准气泡：突出「本轮追问」，其余小节卡片化，避免灰底斜体「说明书」感 */
+const calibrationMarkdownComponents: Components = {
+  code({ className, children, ...props }) {
+    const codeContent = String(children);
+    const isInline = !codeContent.includes('\n');
+    if (isInline) {
+      return (
+        <code
+          className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-sm font-medium"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    }
+    return (
+      <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl my-3 overflow-x-auto text-sm whitespace-pre-wrap border border-slate-700">
+        <code {...props}>{children}</code>
+      </pre>
+    );
+  },
+  h2({ children }) {
+    const label = markdownChildrenToPlainText(children).replace(/\s+/g, '');
+    if (label.includes('本轮追问')) {
+      return (
+        <div className="mb-3 mt-0">
+          <span className="inline-flex items-center rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-blue-500/30">
+            本轮追问
+          </span>
+        </div>
+      );
+    }
+    return (
+      <h2 className="mb-2 mt-5 border-b border-slate-100 pb-2 text-base font-bold text-slate-800">
+        {children}
+      </h2>
+    );
+  },
+  h3({ children }) {
+    return (
+      <h3 className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold leading-snug text-slate-900">
+        <span className="h-4 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-500 to-indigo-500" aria-hidden />
+        <span>{children}</span>
+      </h3>
+    );
+  },
+  blockquote({ children }) {
+    return (
+      <blockquote className="my-3 rounded-xl border border-blue-100/80 bg-gradient-to-br from-sky-50/90 via-white to-indigo-50/80 px-4 py-3.5 not-italic text-slate-800 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100/80">
+        <div className="text-[1.0625rem] font-normal leading-relaxed tracking-tight text-slate-700 [&_strong]:font-normal">
+          {children}
+        </div>
+      </blockquote>
+    );
+  },
+  p({ children }) {
+    return <p className="my-1.5 text-sm font-normal leading-relaxed text-slate-600">{children}</p>;
+  },
+  em({ children }) {
+    return <em className="text-sm font-normal not-italic text-slate-600">{children}</em>;
+  },
+  strong({ children }) {
+    return <strong className="font-normal text-slate-600">{children}</strong>;
+  },
+  hr() {
+    return <hr className="my-5 border-0 bg-gradient-to-r from-transparent via-slate-200 to-transparent h-px" />;
+  },
+  ol({ children }) {
+    return (
+      <ol className="my-2 ml-4 list-decimal space-y-1 text-sm font-normal leading-relaxed text-slate-600 [&_strong]:font-normal">
+        {children}
+      </ol>
+    );
+  },
+  ul({ children }) {
+    return (
+      <ul className="my-2 ml-4 list-disc space-y-1 text-sm font-normal leading-relaxed text-slate-600 [&_strong]:font-normal">
+        {children}
+      </ul>
+    );
+  },
+};
 
 // 提取 **问题** 格式的内容
 function extractQuestions(content: string): string[] {
@@ -413,7 +518,17 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
   if (isAlchemyOutput) {
     return <AlchemyMessage content={content} onContinueWithQuestion={onContinueWithQuestion} />;
   }
-  
+
+  if (isCalibrationAssistantMarkdown(content)) {
+    return (
+      <div className="calibration-md text-sm leading-relaxed">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={calibrationMarkdownComponents}>
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+
   // 普通追问输出
   return (
     <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
@@ -471,10 +586,16 @@ function ChatPageContent() {
 
   // 仅当不是站内跳转到 /chat 时，才回首页（覆盖刷新/直达 /chat 场景）
   useLayoutEffect(() => {
-    const internalNav = consumeInternalChatNavMark();
-    if (!internalNav) {
-      router.replace('/');
+    const hasMark = sessionStorage.getItem(CHAT_INTERNAL_NAV_KEY) === '1';
+    if (hasMark) {
+      sessionStorage.removeItem(CHAT_INTERNAL_NAV_KEY);
+      chatInternalNavStrictModeGuard = true;
+      return;
     }
+    if (chatInternalNavStrictModeGuard) {
+      return;
+    }
+    router.replace('/');
   }, [router]);
 
   // 从 URL 读取 sessionId（v1.1 状态接口不返回历史消息）
@@ -587,6 +708,10 @@ function ChatPageContent() {
       try {
         const parsed = JSON.parse(dataRaw);
         const piece = parsed?.payload?.content || '';
+        if (eventType === 'agent_error' && piece) {
+          fullContent += (fullContent ? '\n\n' : '') + '⚠️ ' + piece + '\n\n';
+          setStreamingContent(fullContent);
+        }
         if (eventType === 'agent_chunk') {
           fullContent += piece;
           setStreamingContent(fullContent);
@@ -702,7 +827,7 @@ function ChatPageContent() {
           setStreamingContent('');
         }
       })();
-    }, 15000);
+    }, 130000);
 
     try {
       let fullContent = await sendMessageAndStream(activeSessionId, messageText.trim());

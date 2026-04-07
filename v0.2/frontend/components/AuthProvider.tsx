@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiPath } from '../lib/runtime-config';
+import { apiPath, SANDBOX_FALLBACK_TOKEN } from '../lib/runtime-config';
 
 export interface AuthUser {
   id: string;
@@ -52,7 +52,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    const token = localStorage.getItem('token');
+    let token = localStorage.getItem('token');
+    if (
+      !token &&
+      typeof window !== 'undefined' &&
+      process.env.NEXT_PUBLIC_DEV_LOCAL_AUTH === 'true'
+    ) {
+      localStorage.setItem('token', SANDBOX_FALLBACK_TOKEN);
+      token = SANDBOX_FALLBACK_TOKEN;
+    }
     if (!token) {
       setUser(null);
       setLoading(false);

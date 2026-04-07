@@ -1,5 +1,7 @@
 package com.questionos.backend.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.questionos.backend.agent.AgentOrchestrator;
 import com.questionos.backend.agent.AgentReplyChunk;
 import com.questionos.backend.domain.ConversationMessage;
@@ -20,6 +22,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SessionService {
     private final AgentOrchestrator orchestrator;
     private final SessionTitleService sessionTitleService;
+    private final ObjectMapper objectMapper;
     private final Map<String, ConversationSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, List<ConversationMessage>> messages = new ConcurrentHashMap<>();
     private final Map<String, List<StreamEvent>> eventStore = new ConcurrentHashMap<>();
@@ -37,9 +41,14 @@ public class SessionService {
     private final AtomicLong globalSeq = new AtomicLong(0);
     private static final Duration SESSION_TTL = Duration.ofHours(1);
 
-    public SessionService(AgentOrchestrator orchestrator, SessionTitleService sessionTitleService) {
+    public SessionService(
+            AgentOrchestrator orchestrator,
+            SessionTitleService sessionTitleService,
+            ObjectMapper objectMapper
+    ) {
         this.orchestrator = orchestrator;
         this.sessionTitleService = sessionTitleService;
+        this.objectMapper = objectMapper;
     }
 
     public ConversationSession createSession(String ownerUserId, SessionMode mode, String question) {
@@ -114,7 +123,7 @@ public class SessionService {
                     if ("agent_chunk".equals(chunk.eventType())) {
                         agentReply.get().append(chunk.content());
                     }
-                    publishEvent(sessionId, turnId, chunk.eventType(), "{\"content\":\"" + escape(chunk.content()) + "\"}");
+                    publishEvent(sessionId, turnId, chunk.eventType(), jsonPayloadForChunkContent(chunk.content()));
                 })
                 .doOnComplete(() -> {
                     String finalReply = agentReply.get().toString().trim();
@@ -207,12 +216,11 @@ public class SessionService {
                 .build();
     }
 
-    private String escape(String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\r", "\\r")
-                .replace("\n", "\\n")
-                .replace("\t", "\\t");
+    private String jsonPayloadForChunkContent(String content) {
+        try {
+            return objectMapper.writeValueAsString(Map.of("content", content == null ? "" : content));
+        } catch (JsonProcessingException e) {
+            return "{\"content\":\"\"}";
+        }
     }
 }

@@ -33,3 +33,7 @@ questionos:
     endpoint: ${QUESTIONOS_LLM_ENDPOINT:}
     apiKey: ${QUESTIONOS_LLM_API_KEY:}
     model: ${QUESTIONOS_LLM_MODEL:}
+    # 思维校准追问带摘录时首包往往更慢；60s 易触发 Reactor 超时
+    timeoutSeconds: ${QUESTIONOS_LLM_TIMEOUT_SECONDS:120}
+    # 部分 OpenAI 兼容网关要求显式 max_tokens；过小会截断 JSON，过大由网关自行约束
+    maxTokens: ${QUESTIONOS_LLM_MAX_TOKENS:4096}

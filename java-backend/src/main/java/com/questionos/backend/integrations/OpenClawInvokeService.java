@@ -2,6 +2,8 @@ package com.questionos.backend.integrations;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -17,6 +19,8 @@ import java.util.Map;
 
 @Service
 public class OpenClawInvokeService {
+    private static final Logger log = LoggerFactory.getLogger(OpenClawInvokeService.class);
+
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
 
@@ -27,6 +31,10 @@ public class OpenClawInvokeService {
     private String defaultLlmApiKey;
     @Value("${questionos.llm.model:}")
     private String defaultLlmModel;
+    @Value("${questionos.llm.timeoutSeconds:60}")
+    private int defaultLlmTimeoutSeconds;
+    @Value("${questionos.llm.maxTokens:4096}")
+    private int defaultLlmMaxTokens;
 
     public OpenClawInvokeService(WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
         this.webClient = webClientBuilder.build();
@@ -94,9 +102,7 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("model", model);
-        body.put("messages", msgList);
+        Map<String, Object> body = newOpenAiChatBody(model, msgList);
 
         return webClient.post()
                 .uri(url)
@@ -111,6 +117,7 @@ public class OpenClawInvokeService {
                 .retrieve()
                 .bodyToMono(String.class)
                 .timeout(Duration.ofSeconds(25))
+                .doOnError(e -> log.warn("OpenClaw LLM 调用失败 url={} model={}: {}", url, model, e.toString()))
                 .map(this::extractContent)
                 .map(text -> text == null || text.isBlank() ? "OpenClaw 返回为空。" : text);
     }
@@ -132,10 +139,9 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("model", useModel);
-        body.put("messages", msgList);
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList);
 
+        Duration llmTimeout = Duration.ofSeconds(Math.max(25, defaultLlmTimeoutSeconds));
         return webClient.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -147,10 +153,32 @@ public class OpenClawInvokeService {
                 })
                 .bodyValue(body)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(), response ->
+                        response.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .flatMap(errorBody -> Mono.error(new IllegalStateException(
+                                        "LLM HTTP " + response.statusCode().value() + ": "
+                                                + (errorBody.isBlank() ? "(无响应体)" : errorBody.substring(0, Math.min(1500, errorBody.length()))))))
+                )
                 .bodyToMono(String.class)
-                .timeout(Duration.ofSeconds(25))
+                .timeout(llmTimeout)
+                .doOnError(e -> log.warn("默认 LLM 调用失败 url={} model={}: {}", url, useModel, e.toString()))
                 .map(this::extractContent)
                 .map(text -> text == null || text.isBlank() ? "LLM 返回为空。" : text);
+    }
+
+    /**
+     * 显式关闭流式：部分兼容网关默认 stream=true，会导致非流式客户端拿到 SSE 串，解析失败。
+     */
+    private Map<String, Object> newOpenAiChatBody(String model, List<Map<String, String>> msgList) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", model);
+        body.put("messages", msgList);
+        body.put("stream", Boolean.FALSE);
+        if (defaultLlmMaxTokens > 0) {
+            body.put("max_tokens", defaultLlmMaxTokens);
+        }
+        return body;
     }
 
     private String normalizeChatCompletionsUrl(String endpoint) {
@@ -167,6 +195,15 @@ public class OpenClawInvokeService {
     private String extractContent(String rawBody) {
         try {
             JsonNode root = objectMapper.readTree(rawBody);
+            // DashScope / OpenAI 兼容：部分错误以 HTTP 200 + JSON error 字段返回
+            if (root.has("error")) {
+                JsonNode err = root.get("error");
+                String code = err.hasNonNull("code") ? err.get("code").asText() : "";
+                String msg = err.hasNonNull("message") ? err.get("message").asText() : err.toString();
+                String type = err.hasNonNull("type") ? err.get("type").asText() : "";
+                String detail = (type.isBlank() ? "" : type + " — ") + (code.isBlank() ? "" : code + " — ") + msg;
+                throw new IllegalStateException("LLM API 错误: " + detail.trim());
+            }
             if (root.has("choices") && root.get("choices").isArray() && root.get("choices").size() > 0) {
                 JsonNode first = root.get("choices").get(0);
                 if (first.has("message") && first.get("message").hasNonNull("content")) {

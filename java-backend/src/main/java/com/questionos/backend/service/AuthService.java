@@ -16,14 +16,24 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AuthService {
     private final WebClient webClient;
     private final String googleClientId;
+    /** 与前端 NEXT_PUBLIC_SANDBOX_TOKEN 对齐；本地调试可免 Google 登录 */
+    private final String sandboxToken;
     private final Map<String, AuthDtos.AuthUser> sessionStore = new ConcurrentHashMap<>();
     private final Map<String, AuthDtos.AuthUser> googleUsers = new ConcurrentHashMap<>();
+    private static final AuthDtos.AuthUser SANDBOX_USER = new AuthDtos.AuthUser(
+            "sandbox_local",
+            "dev@local",
+            "本地沙盒（调试）",
+            ""
+    );
 
     public AuthService(
-            @Value("${questionos.auth.google.client-id:}") String googleClientId
+            @Value("${questionos.auth.google.client-id:}") String googleClientId,
+            @Value("${questionos.auth.sandbox-token:}") String sandboxToken
     ) {
         this.webClient = WebClient.builder().build();
         this.googleClientId = googleClientId;
+        this.sandboxToken = sandboxToken == null ? "" : sandboxToken.trim();
     }
 
     public Mono<AuthDtos.AuthSuccessResponse> loginWithGoogle(String idToken) {
@@ -59,11 +69,21 @@ public class AuthService {
 
     public AuthDtos.AuthUser verifySessionToken(String bearerToken) {
         if (bearerToken == null || bearerToken.isBlank()) return null;
-        return sessionStore.get(bearerToken);
+        AuthDtos.AuthUser fromSession = sessionStore.get(bearerToken);
+        if (fromSession != null) {
+            return fromSession;
+        }
+        if (!sandboxToken.isBlank() && sandboxToken.equals(bearerToken)) {
+            return SANDBOX_USER;
+        }
+        return null;
     }
 
     public void logout(String bearerToken) {
         if (bearerToken == null || bearerToken.isBlank()) return;
+        if (!sandboxToken.isBlank() && sandboxToken.equals(bearerToken)) {
+            return;
+        }
         sessionStore.remove(bearerToken);
     }
 

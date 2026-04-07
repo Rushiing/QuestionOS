@@ -52,7 +52,7 @@ public class AgentOrchestrator {
     ) {
         if (mode == SessionMode.CALIBRATION) {
             return Flux.just(new AgentReplyChunk("agent_start", "main-calibrate|主校准 Agent"))
-                    .concatWith(mainAgent.reply(sessionId, turnId, input))
+                    .concatWith(mainAgent.replyWithHistory(sessionId, turnId, input, history))
                     .concatWithValues(new AgentReplyChunk("done", "本轮结束"));
         }
         return sandboxSingleReply(history, sandboxRoundIndex).concatWithValues(new AgentReplyChunk("done", "本轮结束"));

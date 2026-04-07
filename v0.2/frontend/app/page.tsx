@@ -95,16 +95,17 @@ export default function Home() {
     if (!question.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
-    
-    if (mode === 'consult') {
-      // 咨询模式：跳转到咨询页面
-      sessionStorage.setItem('consultQuestion', question.trim());
-      router.push('/consult');
-    } else {
-      // 校准模式：跳转到对话页面
-      sessionStorage.setItem('initialQuestion', question.trim());
-      markInternalChatNav();
-      router.push('/chat');
+    try {
+      if (mode === 'consult') {
+        sessionStorage.setItem('consultQuestion', question.trim());
+        router.push('/consult');
+      } else {
+        sessionStorage.setItem('initialQuestion', question.trim());
+        markInternalChatNav();
+        router.push('/chat');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

@@ -246,3 +246,13 @@ input, textarea {
   color: #dc2626;
   font-weight: 600;
 }
+
+/* /chat 思维校准气泡：去掉顶部多余分割线、收紧追问块与下文间距 */
+.calibration-md > hr:first-of-type {
+  display: none;
+}
+
+.calibration-md blockquote + hr {
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
+}
