@@ -34,6 +34,8 @@ QUESTIONOS_ALLOWED_ORIGINS=https://<your-frontend-domain>
 QUESTIONOS_LLM_ENDPOINT=https://api.openai.com
 QUESTIONOS_LLM_API_KEY=<your-llm-api-key>
 QUESTIONOS_LLM_MODEL=<your-model-name>
+# 可选：思维校准追问易超时，默认镜像内为 240s；仍报错可设 300～420
+# QUESTIONOS_LLM_TIMEOUT_SECONDS=300
 ```
 
 ### 备选：只检出子目录（若你已在 UI 里配好 Config 路径）

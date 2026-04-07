@@ -33,7 +33,9 @@ questionos:
     endpoint: ${QUESTIONOS_LLM_ENDPOINT:}
     apiKey: ${QUESTIONOS_LLM_API_KEY:}
     model: ${QUESTIONOS_LLM_MODEL:}
-    # 思维校准追问带摘录时首包往往更慢；60s 易触发 Reactor 超时
-    timeoutSeconds: ${QUESTIONOS_LLM_TIMEOUT_SECONDS:120}
+    # 思维校准追问带摘录、线上网络与 GLM 首包可能较慢；默认 240s，仍超时可再在环境变量中加大
+    timeoutSeconds: ${QUESTIONOS_LLM_TIMEOUT_SECONDS:240}
     # 部分 OpenAI 兼容网关要求显式 max_tokens；过小会截断 JSON，过大由网关自行约束
     maxTokens: ${QUESTIONOS_LLM_MAX_TOKENS:4096}
+    # 仅对 DashScope / 百炼兼容域名自动附加 extra_body.enable_thinking（默认 false，避免思维链拖慢首包）
+    extraBodyEnableThinking: ${QUESTIONOS_LLM_EXTRA_BODY_ENABLE_THINKING:false}

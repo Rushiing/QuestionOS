@@ -785,7 +785,7 @@ function ChatPageContent() {
           setStreamingContent('');
         }
       })();
-    }, 130000);
+    }, 280000);
 
     try {
       let fullContent = await sendMessageAndStream(activeSessionId, messageText.trim());

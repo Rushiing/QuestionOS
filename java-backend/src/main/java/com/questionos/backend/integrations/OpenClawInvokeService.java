@@ -31,10 +31,13 @@ public class OpenClawInvokeService {
     private String defaultLlmApiKey;
     @Value("${questionos.llm.model:}")
     private String defaultLlmModel;
-    @Value("${questionos.llm.timeoutSeconds:60}")
+    @Value("${questionos.llm.timeoutSeconds:240}")
     private int defaultLlmTimeoutSeconds;
     @Value("${questionos.llm.maxTokens:4096}")
     private int defaultLlmMaxTokens;
+    /** 为 DashScope 兼容请求附加 extra_body.enable_thinking；默认 false */
+    @Value("${questionos.llm.extraBodyEnableThinking:false}")
+    private boolean extraBodyEnableThinking;
 
     public OpenClawInvokeService(WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
         this.webClient = webClientBuilder.build();
@@ -102,7 +105,7 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = newOpenAiChatBody(model, msgList);
+        Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint());
 
         return webClient.post()
                 .uri(url)
@@ -139,7 +142,7 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = newOpenAiChatBody(useModel, msgList);
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint);
 
         Duration llmTimeout = Duration.ofSeconds(Math.max(25, defaultLlmTimeoutSeconds));
         return webClient.post()
@@ -169,8 +172,9 @@ public class OpenClawInvokeService {
 
     /**
      * 显式关闭流式：部分兼容网关默认 stream=true，会导致非流式客户端拿到 SSE 串，解析失败。
+     * DashScope/百炼 GLM 等：在 extra_body 中显式 enable_thinking，避免网关默认开启思维链拖慢首包。
      */
-    private Map<String, Object> newOpenAiChatBody(String model, List<Map<String, String>> msgList) {
+    private Map<String, Object> newOpenAiChatBody(String model, List<Map<String, String>> msgList, String endpointHint) {
         Map<String, Object> body = new HashMap<>();
         body.put("model", model);
         body.put("messages", msgList);
@@ -178,7 +182,21 @@ public class OpenClawInvokeService {
         if (defaultLlmMaxTokens > 0) {
             body.put("max_tokens", defaultLlmMaxTokens);
         }
+        if (shouldAttachDashscopeStyleExtras(endpointHint)) {
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("enable_thinking", extraBodyEnableThinking);
+            body.put("extra_body", extra);
+        }
         return body;
+    }
+
+    /** 与 Python OpenAI SDK 的 extra_body 对齐；仅对百炼/DashScope 域名附加，避免向纯 OpenAI 发送未知字段 */
+    private static boolean shouldAttachDashscopeStyleExtras(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) {
+            return false;
+        }
+        String e = endpoint.toLowerCase();
+        return e.contains("dashscope") || e.contains("aliyuncs.com");
     }
 
     private String normalizeChatCompletionsUrl(String endpoint) {

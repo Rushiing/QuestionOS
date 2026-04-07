@@ -121,8 +121,8 @@ public class MainCalibrateAgent implements AgentExecutor {
     private static String formatInvokeFailureMessage(Throwable e) {
         if (isLikelyAsyncTimeout(e)) {
             return "调用失败: 大模型在配置的超时时间内未返回完整结果（追问带长摘录时更慢）。"
-                    + "请在环境变量 QUESTIONOS_LLM_TIMEOUT_SECONDS 中增大秒数（例如 180）并重启 java-backend；"
-                    + "同时确认前端等待时间足够。";
+                    + "请在部署环境将 QUESTIONOS_LLM_TIMEOUT_SECONDS 调大（例如 300～420）并重启 java-backend；"
+                    + "前端单次等待需略大于该秒数（见 chat/page.tsx 内超时）。";
         }
         String msg = e.getMessage();
         return "调用失败: " + (msg != null && !msg.isBlank() ? msg : e.getClass().getSimpleName());
