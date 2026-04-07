@@ -540,6 +540,7 @@ function ChatPageContent() {
   const [showWelcome, setShowWelcome] = useState(true);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState('');
+  const [streamingDeltaRaw, setStreamingDeltaRaw] = useState('');
   const lastSeqRef = useRef<number>(0);
 
   // 仅当不是站内跳转到 /chat 时，才回首页（覆盖刷新/直达 /chat 场景）
@@ -589,6 +590,7 @@ function ChatPageContent() {
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
     setStreamingContent('');
+    setStreamingDeltaRaw('');
     
     try {
       let currentSessionId = sessionId;
@@ -610,10 +612,12 @@ function ChatPageContent() {
       
       setMessages((prev) => [...prev, assistantMessage]);
       setStreamingContent('');
+      setStreamingDeltaRaw('');
       
     } catch (error) {
       console.error('Error:', error);
       setStreamingContent('');
+      setStreamingDeltaRaw('');
     } finally {
       setIsLoading(false);
     }
@@ -622,7 +626,7 @@ function ChatPageContent() {
   // 滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, streamingDeltaRaw]);
 
   // 加载初始问题
   useEffect(() => {
@@ -657,7 +661,9 @@ function ChatPageContent() {
     await sandboxClient.sendMessage(sid, content, idemKey);
 
     let streamDone = false;
-    let fullContent = '';
+    let chunkBuf = '';
+    let deltaBuf = '';
+    let receivedModelDelta = false;
     await sandboxClient.streamTurn(sid, lastSeqRef.current, ({ eventType, eventId, dataRaw }) => {
       if (eventId && !eventId.startsWith('hb-')) {
         const seq = Number(eventId);
@@ -666,13 +672,25 @@ function ChatPageContent() {
       try {
         const parsed = JSON.parse(dataRaw);
         const piece = parsed?.payload?.content || '';
+        if (eventType === 'agent_delta' && piece) {
+          receivedModelDelta = true;
+          deltaBuf += piece;
+          setStreamingDeltaRaw(deltaBuf);
+        }
         if (eventType === 'agent_error' && piece) {
-          fullContent += (fullContent ? '\n\n' : '') + '⚠️ ' + piece + '\n\n';
-          setStreamingContent(fullContent);
+          setStreamingDeltaRaw('');
+          chunkBuf += (chunkBuf ? '\n\n' : '') + '⚠️ ' + piece + '\n\n';
+          setStreamingContent(chunkBuf);
         }
         if (eventType === 'agent_chunk') {
-          fullContent += piece;
-          setStreamingContent(fullContent);
+          if (receivedModelDelta) {
+            chunkBuf = piece;
+            setStreamingDeltaRaw('');
+            setStreamingContent(piece);
+          } else {
+            chunkBuf += piece;
+            setStreamingContent(chunkBuf);
+          }
         }
         if (eventType === 'done') {
           return false;
@@ -689,9 +707,9 @@ function ChatPageContent() {
 
     if (!streamDone) {
       // keep current behavior if stream closes unexpectedly
-      return fullContent;
+      return chunkBuf;
     }
-    return fullContent;
+    return chunkBuf;
   };
 
   const handleSendMessage = async (text?: string) => {
@@ -724,6 +742,7 @@ function ChatPageContent() {
     setInput('');
     setIsLoading(true);
     setStreamingContent('');
+    setStreamingDeltaRaw('');
     let activeSessionId = sessionId;
     if (!activeSessionId) {
       try {
@@ -751,6 +770,7 @@ function ChatPageContent() {
           if (!activeSessionId) {
             setIsLoading(false);
             setStreamingContent('');
+            setStreamingDeltaRaw('');
             return;
           }
           const msgList = await sandboxClient.listMessages(activeSessionId);
@@ -783,6 +803,7 @@ function ChatPageContent() {
         } finally {
           setIsLoading(false);
           setStreamingContent('');
+          setStreamingDeltaRaw('');
         }
       })();
     }, 280000);
@@ -807,6 +828,7 @@ function ChatPageContent() {
 
       setMessages((prev) => [...prev, assistantMessage]);
       setStreamingContent('');
+      setStreamingDeltaRaw('');
     } catch (error) {
       if (timedOut) return;
       console.error('Error:', error);
@@ -821,6 +843,7 @@ function ChatPageContent() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+      setStreamingDeltaRaw('');
     } finally {
       clearTimeout(timeout);
       if (!timedOut) {
@@ -958,20 +981,33 @@ function ChatPageContent() {
               );
             })}
             
-            {/* Streaming Content */}
+            {/* 真·流式：模型 JSON 增量（不入库的最终形态由随后 agent_chunk 覆盖） */}
+            {streamingDeltaRaw && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] bg-slate-50 border border-slate-200 text-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+                  <p className="text-xs text-slate-500 mb-2">正在生成…</p>
+                  <pre className="text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap break-words font-mono max-h-72 overflow-y-auto">
+                    {streamingDeltaRaw}
+                  </pre>
+                  <span className="inline-block mt-1 animate-pulse text-slate-400">▌</span>
+                </div>
+              </div>
+            )}
+
+            {/* Streaming Content：格式化后的 Markdown（校准样式） */}
             {streamingContent && (
               <div className="flex justify-start">
                 <div className="max-w-[80%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                   <AIMessage 
                     content={streamingContent} 
                   />
-                  <span className="animate-pulse">▌</span>
+                  {!streamingDeltaRaw && <span className="animate-pulse">▌</span>}
                 </div>
               </div>
             )}
             
             {/* Loading */}
-            {isLoading && !streamingContent && (
+            {isLoading && !streamingContent && !streamingDeltaRaw && (
               <div className="flex justify-start">
                 <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                   <div className="flex gap-1">

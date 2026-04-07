@@ -7,8 +7,10 @@ import com.questionos.backend.domain.MessageRole;
 import com.questionos.backend.integrations.OpenClawInvokeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
@@ -78,6 +80,11 @@ public class MainCalibrateAgent implements AgentExecutor {
     private final OpenClawInvokeService invokeService;
     private final ObjectMapper objectMapper;
 
+    @Value("${questionos.llm.streamChatCompletions:true}")
+    private boolean streamChatCompletions;
+    @Value("${questionos.llm.calibrationStreamUi:true}")
+    private boolean calibrationStreamUi;
+
     /** 追问轮次多时，过长摘录会导致兼容接口拒收或超时；助手侧 Markdown 可短截断 */
     private static final int TRANSCRIPT_MAX_MESSAGES = 16;
     /** 用户单条通常短于助手；摘录里把预算多留给助手侧 Markdown */
@@ -122,6 +129,31 @@ public class MainCalibrateAgent implements AgentExecutor {
                 userPayload.length(),
                 CALIBRATION_PROMPT.length(),
                 historySize);
+
+        if (calibrationStreamUi && streamChatCompletions) {
+            StringBuilder rawAcc = new StringBuilder();
+            return invokeService.invokeDefaultLlmStreamingDeltas(CALIBRATION_PROMPT, userPayload, stage)
+                    .doOnNext(rawAcc::append)
+                    .map(d -> new AgentReplyChunk("agent_delta", d))
+                    .concatWith(Mono.fromCallable(() -> {
+                        String raw = rawAcc.toString();
+                        long tf = System.currentTimeMillis();
+                        String md = formatCalibrationJson(raw);
+                        long formatMarkdownMs = System.currentTimeMillis() - tf;
+                        log.info(
+                                "main-calibrate formatMarkdown stage={} formatMarkdownMs={} rawModelChars={} markdownChars={}",
+                                stage,
+                                formatMarkdownMs,
+                                raw.length(),
+                                md == null ? 0 : md.length());
+                        return new AgentReplyChunk("agent_chunk", md);
+                    }))
+                    .onErrorResume(e -> Flux.fromIterable(List.of(
+                                    new AgentReplyChunk("agent_error", formatInvokeFailureMessage(e)),
+                                    new AgentReplyChunk("agent_chunk", formatCalibrationJson(FALLBACK_JSON))
+                            ))
+                            .delayElements(Duration.ofMillis(80)));
+        }
 
         return invokeService.invokeDefaultLlm(CALIBRATION_PROMPT, userPayload, stage)
                 .map(raw -> {

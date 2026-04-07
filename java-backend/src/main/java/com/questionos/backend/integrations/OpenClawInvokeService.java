@@ -8,14 +8,25 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.beans.factory.annotation.Value;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Service
 public class OpenClawInvokeService {
@@ -38,6 +49,8 @@ public class OpenClawInvokeService {
     /** 为 DashScope 兼容请求附加 extra_body.enable_thinking；默认 false */
     @Value("${questionos.llm.extraBodyEnableThinking:false}")
     private boolean extraBodyEnableThinking;
+    @Value("${questionos.llm.streamChatCompletions:true}")
+    private boolean streamChatCompletionsDefault;
 
     public OpenClawInvokeService(WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
         this.webClient = webClientBuilder.build();
@@ -98,8 +111,86 @@ public class OpenClawInvokeService {
                     "未配置 questionos.llm.endpoint（QUESTIONOS_LLM_ENDPOINT 为空）。请先设置后重试。"
             ));
         }
+        if (streamChatCompletionsDefault) {
+            return invokeDefaultLlmStreamingCollect(
+                    defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1);
+        }
         return invokeOpenAICompatibleRaw(
                 defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1);
+    }
+
+    /**
+     * OpenAI 兼容流式（SSE）：拼接 {@code choices[0].delta.content}，完成后与整包调用结果一致，便于首包更早到达。
+     */
+    public Mono<String> invokeDefaultLlmStreamingCollect(
+            String endpoint,
+            String apiKey,
+            String model,
+            String systemPrompt,
+            String userMessage,
+            String stage,
+            int timeoutSecondsOverride
+    ) {
+        String url = normalizeChatCompletionsUrl(endpoint);
+        String useModel = (model == null || model.isBlank()) ? "custom-dogfooding/pitaya-03-20" : model;
+        String useApiKey = apiKey == null ? "" : apiKey.trim();
+        List<Map<String, String>> msgList = new ArrayList<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            msgList.add(Map.of("role", "system", "content", systemPrompt));
+        }
+        msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, true);
+        int effSec = timeoutSecondsOverride >= 0 ? timeoutSecondsOverride : defaultLlmTimeoutSeconds;
+        Duration timeout = Duration.ofSeconds(Math.max(25, effSec));
+        return Mono.fromCallable(() -> {
+                    StringBuilder acc = new StringBuilder();
+                    executeChatCompletionsStreamConsuming(url, body, useApiKey, useModel, stage, timeout, acc::append);
+                    return acc.toString();
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .timeout(timeout.plusSeconds(5));
+    }
+
+    /**
+     * 流式：每收到一段 {@code delta.content} 即向下游发射；用于校准真·流式 UI（与 {@link #invokeDefaultLlmStreamingCollect} 同一条 HTTP SSE）。
+     */
+    public Flux<String> invokeDefaultLlmStreamingDeltas(
+            String systemPrompt,
+            String userMessage,
+            String stage
+    ) {
+        if (defaultLlmEndpoint == null || defaultLlmEndpoint.isBlank()) {
+            return Flux.error(new IllegalStateException(
+                    "未配置 questionos.llm.endpoint（QUESTIONOS_LLM_ENDPOINT 为空）。请先设置后重试。"
+            ));
+        }
+        String url = normalizeChatCompletionsUrl(defaultLlmEndpoint);
+        String useModel = (defaultLlmModel == null || defaultLlmModel.isBlank())
+                ? "custom-dogfooding/pitaya-03-20"
+                : defaultLlmModel;
+        String useApiKey = defaultLlmApiKey == null ? "" : defaultLlmApiKey.trim();
+        List<Map<String, String>> msgList = new ArrayList<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            msgList.add(Map.of("role", "system", "content", systemPrompt));
+        }
+        msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, defaultLlmEndpoint, true);
+        int effSec = defaultLlmTimeoutSeconds;
+        Duration timeout = Duration.ofSeconds(Math.max(25, effSec));
+        return Flux.<String>create(sink -> {
+                    try {
+                        executeChatCompletionsStreamConsuming(
+                                url, body, useApiKey, useModel, stage, timeout, piece -> {
+                                    if (piece != null && !piece.isEmpty()) {
+                                        sink.next(piece);
+                                    }
+                                });
+                        sink.complete();
+                    } catch (Exception e) {
+                        sink.error(e);
+                    }
+                })
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     private Mono<String> invokeOpenAICompatible(AgentRegistryService.RegisteredAgent agent, String systemPrompt, String userMessage) {
@@ -113,7 +204,7 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint());
+        Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint(), false);
 
         return executeChatCompletions(
                 url,
@@ -146,7 +237,7 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint);
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, false);
 
         int effSec = timeoutSecondsOverride >= 0 ? timeoutSecondsOverride : defaultLlmTimeoutSeconds;
         Duration llmTimeout = Duration.ofSeconds(Math.max(25, effSec));
@@ -255,6 +346,130 @@ public class OpenClawInvokeService {
                 .map(text -> text == null || text.isBlank() ? "LLM 返回为空。" : text);
     }
 
+    /**
+     * 阻塞读取 SSE；每段非空 content 交给 {@code onDelta}，结束时打耗时日志。
+     */
+    private void executeChatCompletionsStreamConsuming(
+            String url,
+            Map<String, Object> body,
+            String apiKey,
+            String model,
+            String stage,
+            Duration timeout,
+            Consumer<String> onDelta
+    ) throws Exception {
+        long start = System.currentTimeMillis();
+        long firstDeltaMs = -1L;
+        int deltaChunks = 0;
+        int accChars = 0;
+        String jsonBody = objectMapper.writeValueAsString(body);
+
+        boolean dashExtra = body.containsKey("extra_body");
+        String extraThinkingLog = "n/a";
+        Object ebObj = body.get("extra_body");
+        if (ebObj instanceof Map<?, ?> em) {
+            Object et = em.get("enable_thinking");
+            extraThinkingLog = et == null ? "null" : String.valueOf(et);
+        }
+        log.info(
+                "LLM stream request start stage={} model={} timeoutSec={} dashScopeExtraBody={} extraEnableThinking={} stream=true url={}",
+                stage,
+                model,
+                timeout.getSeconds(),
+                dashExtra,
+                extraThinkingLog,
+                shortenUrlForLog(url));
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(20))
+                .build();
+        HttpRequest.Builder rb = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(timeout.plusSeconds(10))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8));
+        if (apiKey != null && !apiKey.isBlank()) {
+            rb.header("Authorization", "Bearer " + apiKey.trim());
+        }
+        HttpResponse<InputStream> resp = client.send(rb.build(), HttpResponse.BodyHandlers.ofInputStream());
+        if (resp.statusCode() >= 400) {
+            String err = readStreamAsString(resp.body());
+            throw new IllegalStateException(
+                    "LLM HTTP " + resp.statusCode() + ": "
+                            + (err.isBlank() ? "(无响应体)" : err.substring(0, Math.min(1500, err.length()))));
+        }
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resp.body(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.startsWith("data:")) {
+                    continue;
+                }
+                String data = line.substring(5).trim();
+                if (data.isEmpty()) {
+                    continue;
+                }
+                if ("[DONE]".equals(data)) {
+                    break;
+                }
+                JsonNode root = objectMapper.readTree(data);
+                if (root.has("error")) {
+                    JsonNode errNode = root.get("error");
+                    String msg = errNode.hasNonNull("message") ? errNode.get("message").asText() : errNode.toString();
+                    throw new IllegalStateException("LLM API 错误: " + msg);
+                }
+                String piece = extractStreamDeltaContent(root);
+                if (piece != null && !piece.isEmpty()) {
+                    if (firstDeltaMs < 0L) {
+                        firstDeltaMs = System.currentTimeMillis() - start;
+                    }
+                    onDelta.accept(piece);
+                    accChars += piece.length();
+                    deltaChunks++;
+                }
+            }
+        }
+        long totalMs = System.currentTimeMillis() - start;
+        log.info(
+                "LLM stream request done stage={} model={} firstDeltaMs={} deltaChunks={} streamTotalMs={} accChars={}",
+                stage,
+                model,
+                firstDeltaMs,
+                deltaChunks,
+                totalMs,
+                accChars);
+        if (deltaChunks == 0) {
+            throw new IllegalStateException("LLM 流式返回为空");
+        }
+    }
+
+    private static String readStreamAsString(InputStream in) throws java.io.IOException {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) {
+                sb.append(line).append('\n');
+            }
+            return sb.toString();
+        }
+    }
+
+    private String extractStreamDeltaContent(JsonNode root) {
+        if (!root.has("choices") || !root.get("choices").isArray() || root.get("choices").isEmpty()) {
+            return "";
+        }
+        JsonNode ch = root.get("choices").get(0);
+        if (!ch.has("delta")) {
+            return "";
+        }
+        JsonNode delta = ch.get("delta");
+        if (delta.hasNonNull("content")) {
+            return delta.get("content").asText();
+        }
+        return "";
+    }
+
     private static String shortenUrlForLog(String url) {
         if (url == null || url.length() <= 96) {
             return url;
@@ -266,11 +481,16 @@ public class OpenClawInvokeService {
      * 显式关闭流式：部分兼容网关默认 stream=true，会导致非流式客户端拿到 SSE 串，解析失败。
      * DashScope/百炼 GLM 等：在 extra_body 中显式 enable_thinking，避免网关默认开启思维链拖慢首包。
      */
-    private Map<String, Object> newOpenAiChatBody(String model, List<Map<String, String>> msgList, String endpointHint) {
+    private Map<String, Object> newOpenAiChatBody(
+            String model,
+            List<Map<String, String>> msgList,
+            String endpointHint,
+            boolean stream
+    ) {
         Map<String, Object> body = new HashMap<>();
         body.put("model", model);
         body.put("messages", msgList);
-        body.put("stream", Boolean.FALSE);
+        body.put("stream", stream);
         if (defaultLlmMaxTokens > 0) {
             body.put("max_tokens", defaultLlmMaxTokens);
         }

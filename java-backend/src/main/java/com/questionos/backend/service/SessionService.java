@@ -139,6 +139,7 @@ public class SessionService {
                     if ("agent_chunk".equals(chunk.eventType())) {
                         agentReply.get().append(chunk.content());
                     }
+                    // agent_delta：仅实时 UI，不入库（最终仍以 agent_chunk 为准）
                     publishEvent(sessionId, turnId, chunk.eventType(), jsonPayloadForChunkContent(chunk.content()));
                 })
                 .doOnComplete(() -> {

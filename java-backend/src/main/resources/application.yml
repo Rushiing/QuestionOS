@@ -43,3 +43,7 @@ questionos:
     maxTokens: ${QUESTIONOS_LLM_MAX_TOKENS:4096}
     # 仅对 DashScope / 百炼兼容域名自动附加 extra_body.enable_thinking（默认 false，避免思维链拖慢首包）
     extraBodyEnableThinking: ${QUESTIONOS_LLM_EXTRA_BODY_ENABLE_THINKING:false}
+    # true：chat/completions 用 SSE 流式拉取并拼接，通常比整包等待更早收到首包；不兼容时改 false
+    streamChatCompletions: ${QUESTIONOS_LLM_STREAM_CHAT_COMPLETIONS:true}
+    # true：思维校准把模型 delta 经 SSE agent_delta 推到前端，再发最终 agent_chunk（格式化 Markdown）；需 streamChatCompletions=true
+    calibrationStreamUi: ${QUESTIONOS_LLM_CALIBRATION_STREAM_UI:true}
