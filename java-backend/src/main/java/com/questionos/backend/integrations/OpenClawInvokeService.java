@@ -154,7 +154,8 @@ public class OpenClawInvokeService {
     }
 
     /**
-     * 拆耗时：httpRoundTripMs（发起到收到响应体）、extractJsonMs（解析 JSON 取 content）、之后为业务侧 format。
+     * 拆耗时：ttfbMs（发起到收到 HTTP 响应头，近似「首字节」）、bodyReadMs（读响应体）、httpRoundTripMs 为二者之和；
+     * 若百炼整包缓冲后再回，常见 ttfbMs≈httpRoundTripMs、bodyReadMs≈0，慢在首字节前（建连/排队/推理）。
      */
     private Mono<String> executeChatCompletions(
             String url,
@@ -181,9 +182,23 @@ public class OpenClawInvokeService {
                 }
             }
         }
+        boolean dashExtra = body.containsKey("extra_body");
+        String extraThinkingLog = "n/a";
+        Object ebObj = body.get("extra_body");
+        if (ebObj instanceof Map<?, ?> em) {
+            Object et = em.get("enable_thinking");
+            extraThinkingLog = et == null ? "null" : String.valueOf(et);
+        }
         log.info(
-                "LLM request start stage={} model={} timeoutSec={} systemChars={} userChars={} url={}",
-                stage, model, timeout.getSeconds(), sysLen, userLen, shortenUrlForLog(url));
+                "LLM request start stage={} model={} timeoutSec={} systemChars={} userChars={} dashScopeExtraBody={} extraEnableThinking={} url={}",
+                stage,
+                model,
+                timeout.getSeconds(),
+                sysLen,
+                userLen,
+                dashExtra,
+                extraThinkingLog,
+                shortenUrlForLog(url));
 
         return webClient.post()
                 .uri(url)
@@ -195,32 +210,47 @@ public class OpenClawInvokeService {
                     }
                 })
                 .bodyValue(body)
-                .retrieve()
-                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(), response ->
-                        response.bodyToMono(String.class)
+                .exchangeToMono(response -> {
+                    long ttfbMs = subscribeAt[0] > 0 ? System.currentTimeMillis() - subscribeAt[0] : -1L;
+                    if (response.statusCode().is4xxClientError() || response.statusCode().is5xxServerError()) {
+                        return response.bodyToMono(String.class)
                                 .defaultIfEmpty("")
-                                .flatMap(errorBody -> Mono.error(new IllegalStateException(
-                                        "LLM HTTP " + response.statusCode().value() + ": "
-                                                + (errorBody.isBlank() ? "(无响应体)" : errorBody.substring(0, Math.min(1500, errorBody.length()))))))
-                )
-                .bodyToMono(String.class)
+                                .flatMap(errorBody -> {
+                                    String snippet = errorBody.isBlank()
+                                            ? "(无响应体)"
+                                            : errorBody.substring(0, Math.min(1500, errorBody.length()));
+                                    return Mono.error(new IllegalStateException(
+                                            "LLM HTTP " + response.statusCode().value() + ": " + snippet));
+                                });
+                    }
+                    return response.bodyToMono(String.class)
+                            .defaultIfEmpty("")
+                            .map(raw -> {
+                                long totalMs = subscribeAt[0] > 0 ? System.currentTimeMillis() - subscribeAt[0] : -1L;
+                                long bodyReadMs = Math.max(0L, totalMs - ttfbMs);
+                                int rawLen = raw == null ? 0 : raw.length();
+                                long tParse = System.currentTimeMillis();
+                                String text = extractContent(raw);
+                                long extractMs = System.currentTimeMillis() - tParse;
+                                int outLen = text == null ? 0 : text.length();
+                                log.info(
+                                        "LLM request done stage={} model={} ttfbMs={} bodyReadMs={} httpRoundTripMs={} rawBodyChars={} extractJsonMs={} textChars={}",
+                                        stage,
+                                        model,
+                                        ttfbMs,
+                                        bodyReadMs,
+                                        totalMs,
+                                        rawLen,
+                                        extractMs,
+                                        outLen);
+                                return text;
+                            });
+                })
                 .timeout(timeout)
                 .doOnSubscribe(s -> subscribeAt[0] = System.currentTimeMillis())
                 .doOnError(e -> {
                     long after = subscribeAt[0] > 0 ? System.currentTimeMillis() - subscribeAt[0] : -1L;
                     log.warn("LLM request failed stage={} model={} afterMs={} err={}", stage, model, after, e.toString());
-                })
-                .map(raw -> {
-                    long httpMs = subscribeAt[0] > 0 ? System.currentTimeMillis() - subscribeAt[0] : -1L;
-                    int rawLen = raw == null ? 0 : raw.length();
-                    long tParse = System.currentTimeMillis();
-                    String text = extractContent(raw);
-                    long extractMs = System.currentTimeMillis() - tParse;
-                    int outLen = text == null ? 0 : text.length();
-                    log.info(
-                            "LLM request done stage={} model={} httpRoundTripMs={} rawBodyChars={} extractJsonMs={} textChars={}",
-                            stage, model, httpMs, rawLen, extractMs, outLen);
-                    return text;
                 })
                 .map(text -> text == null || text.isBlank() ? "LLM 返回为空。" : text);
     }
