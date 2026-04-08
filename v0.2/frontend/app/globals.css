@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 26, 54, 93;
-  --background-start-rgb: 250, 249, 246;
-  --background-end-rgb: 247, 243, 232;
+  --foreground-rgb: 17, 24, 39;
+  --background-start-rgb: 255, 255, 255;
+  --background-end-rgb: 249, 250, 251;
 }
 
 * {
@@ -28,7 +28,6 @@ body {
     rgb(var(--background-start-rgb)),
     rgb(var(--background-end-rgb))
   );
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 input, textarea {
@@ -42,16 +41,16 @@ input, textarea {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f7f3e8;
+  background: #f3f4f6;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #bcccdc;
+  background: #99f6e4;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9fb3c8;
+  background: #5eead4;
 }
 
 /* Float animation for example questions */
@@ -153,7 +152,7 @@ input, textarea {
 
 /* 引用 */
 .markdown-content blockquote {
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid #14b8a6;
   padding-left: 1em;
   margin: 0.75em 0;
   color: #475569;
@@ -222,13 +221,13 @@ input, textarea {
 
 /* 链接 */
 .markdown-content a {
-  color: #3b82f6;
+  color: #0d9488;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .markdown-content a:hover {
-  color: #2563eb;
+  color: #0f766e;
 }
 
 /* 特殊：关键信息高亮块 */

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Noto_Sans_SC } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 
@@ -9,6 +9,12 @@ export const dynamic = 'force-dynamic'
 const inter = Inter({ 
   subsets: ['latin'],
   variable: '--font-inter',
+})
+
+const notoSansSc = Noto_Sans_SC({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-noto-sc',
 })
 
 export const metadata: Metadata = {
@@ -44,7 +50,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: browserApiBaseScript() }} />
         <script dangerouslySetInnerHTML={{ __html: browserGoogleClientIdScript() }} />
       </head>
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${inter.variable} ${notoSansSc.variable} antialiased font-sans`}>
         <Providers>
           <main className="min-h-screen">
             {children}

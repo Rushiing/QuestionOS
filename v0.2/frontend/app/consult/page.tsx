@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm';
 import { AuthButton, useAuth } from '../../components/AuthButton';
 import { AgentInstance, OnboardingJobStatus, sandboxClient } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
+import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 
 interface Agent {
   id: string;
@@ -654,7 +655,9 @@ export default function ConsultPage() {
     try {
       const sid = await createSession(question);
       setSessionId(sid);
-      await runTurn(sid, question);
+      const bg = takeBackgroundContext();
+      const payload = bg ? wrapUserMessageWithBackground(question, bg) : question;
+      await runTurn(sid, payload);
     } catch (error) {
       console.error('start session failed:', error);
       setMessages(prev => [...prev, {
@@ -814,25 +817,25 @@ export default function ConsultPage() {
                           }
                           setIntegrationEntryOpen((v) => !v);
                         }}
-                        className="flex flex-col items-center min-w-[4.5rem] rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                        className="flex flex-col items-center min-w-[4.5rem] rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
                       >
                         <div
                           className={`w-16 h-16 rounded-full border-2 flex items-center justify-center text-2xl mb-2 transition-colors ${
                             integrationEntryOpen
-                              ? 'bg-indigo-100 border-indigo-400'
-                              : 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100'
+                              ? 'bg-teal-100 border-teal-400'
+                              : 'bg-teal-50 border-teal-200 hover:bg-teal-100'
                           }`}
                         >
                           🔌
                         </div>
-                        <span className="text-sm font-medium text-indigo-700 text-center leading-tight">三方接入入口</span>
+                        <span className="text-sm font-medium text-teal-700 text-center leading-tight">三方接入入口</span>
                       </button>
                     </div>
                   </div>
                 </div>
               )}
               {integrationEntryOpen && (
-                <div className="mt-5 mx-auto max-w-xl bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900">
+                <div className="mt-5 mx-auto max-w-xl bg-teal-50 border border-teal-200 rounded-xl p-4 text-sm text-teal-900">
                   <div className="font-semibold mb-2">OpenClaw Agent 接入台</div>
                   <p className="mb-3">推荐一键接入：创建委托单 → 发给 Agent 自动执行 → 本页自动更新结果。</p>
                   {!isLoggedIn && (
@@ -846,9 +849,9 @@ export default function ConsultPage() {
                   </div>
 
                   <div className="mb-3 flex gap-2 text-xs">
-                    <span className={`px-2 py-1 rounded ${onboardingStep >= 1 ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>1. 创建实例</span>
-                    <span className={`px-2 py-1 rounded ${onboardingStep >= 2 ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>2. 获取配置</span>
-                    <span className={`px-2 py-1 rounded ${onboardingStep >= 3 ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>3. 联通测试</span>
+                    <span className={`px-2 py-1 rounded ${onboardingStep >= 1 ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700'}`}>1. 创建实例</span>
+                    <span className={`px-2 py-1 rounded ${onboardingStep >= 2 ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700'}`}>2. 获取配置</span>
+                    <span className={`px-2 py-1 rounded ${onboardingStep >= 3 ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700'}`}>3. 联通测试</span>
                   </div>
 
                   <div className="grid grid-cols-1 gap-2 mb-3">
@@ -857,28 +860,28 @@ export default function ConsultPage() {
                       onChange={(e) => setOpenClawAgentId(e.target.value)}
                       placeholder="Agent ID（留空可自动生成）"
                       disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
+                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
                     />
                     <input
                       value={openClawEndpoint}
                       onChange={(e) => setOpenClawEndpoint(e.target.value)}
                       placeholder="OpenClaw endpoint"
                       disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
+                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
                     />
                     <input
                       value={openClawApiKey}
                       onChange={(e) => setOpenClawApiKey(e.target.value)}
                       placeholder="OpenClaw API Key（例如 7182...）"
                       disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
+                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
                     />
                     <input
                       value={openClawModel}
                       onChange={(e) => setOpenClawModel(e.target.value)}
                       placeholder="OpenClaw model"
                       disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-900"
+                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
                     />
                   </div>
 
@@ -886,47 +889,47 @@ export default function ConsultPage() {
                     <button
                       onClick={generateOneClickOnboarding}
                       disabled={!isLoggedIn || isGeneratingOnboardingPacket}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg bg-teal-700 text-white hover:bg-teal-800 disabled:opacity-50"
                     >
                       {isGeneratingOnboardingPacket ? '生成中...' : '创建接入委托（复制给 Agent）'}
                     </button>
                     <button
                       onClick={createOpenClawIntegration}
                       disabled={!isLoggedIn || isCreatingIntegration}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
                     >
                       {isCreatingIntegration ? '创建中...' : '创建 OpenClaw 接入'}
                     </button>
                     <button
                       onClick={() => navigator.clipboard.writeText(openClawConfigText)}
-                      className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-800 hover:bg-indigo-100"
+                      className="px-3 py-1.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-100"
                     >
                       复制接入配置
                     </button>
                     <button
                       onClick={loadInstances}
                       disabled={!isLoggedIn || loadingInstances}
-                      className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-100 disabled:opacity-50"
                     >
                       {loadingInstances ? '刷新中...' : '刷新实例面板'}
                     </button>
                     <button
                       onClick={runOpenClawConnectivityTest}
                       disabled={!isLoggedIn || isTestingIntegration}
-                      className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-100 disabled:opacity-50"
                     >
                       {isTestingIntegration ? '测试中...' : '运行联通测试'}
                     </button>
                   </div>
 
-                  <pre className="text-xs p-3 rounded bg-white border border-indigo-200 text-indigo-900 overflow-x-auto whitespace-pre-wrap mb-2">{openClawConfigText}</pre>
+                  <pre className="text-xs p-3 rounded bg-white border border-teal-200 text-teal-900 overflow-x-auto whitespace-pre-wrap mb-2">{openClawConfigText}</pre>
                   {onboardingJobId && onboardingJobToken && onboardingInstructionUrl && (
-                    <pre className="text-xs p-3 rounded bg-white border border-indigo-200 text-indigo-900 overflow-x-auto whitespace-pre-wrap mb-2">
+                    <pre className="text-xs p-3 rounded bg-white border border-teal-200 text-teal-900 overflow-x-auto whitespace-pre-wrap mb-2">
 {buildOneClickMessage(onboardingJobId, onboardingJobToken, onboardingInstructionUrl)}
                     </pre>
                   )}
                   {onboardingJobStatus && (
-                    <div className="mt-2 text-xs rounded-lg p-2 border bg-indigo-50 text-indigo-800 border-indigo-200">
+                    <div className="mt-2 text-xs rounded-lg p-2 border bg-teal-50 text-teal-800 border-teal-200">
                       <div>委托状态：{onboardingJobStatus.status}</div>
                       <div className="mt-1">说明：{onboardingJobStatus.message}</div>
                       {onboardingJobStatus.agentId && (
@@ -935,7 +938,7 @@ export default function ConsultPage() {
                     </div>
                   )}
 
-                  {integrationHint && <p className="mt-1 text-xs text-indigo-700">{integrationHint}</p>}
+                  {integrationHint && <p className="mt-1 text-xs text-teal-700">{integrationHint}</p>}
                   {integrationResult && (
                     <div className={`mt-2 text-xs rounded-lg p-2 border ${integrationResult.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                       <div>{integrationResult.message}</div>
@@ -945,22 +948,22 @@ export default function ConsultPage() {
                     </div>
                   )}
 
-                  <div className="mt-3 bg-white border border-indigo-200 rounded-lg p-3">
+                  <div className="mt-3 bg-white border border-teal-200 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-xs font-semibold text-indigo-800">OpenClaw 实例面板</div>
-                      <div className="text-xs text-indigo-500">共 {instances.length} 个</div>
+                      <div className="text-xs font-semibold text-teal-800">OpenClaw 实例面板</div>
+                      <div className="text-xs text-teal-500">共 {instances.length} 个</div>
                     </div>
                     {instances.length === 0 ? (
-                      <div className="text-xs text-indigo-500">暂无实例，先点击“创建 OpenClaw 接入”。</div>
+                      <div className="text-xs text-teal-500">暂无实例，先点击“创建 OpenClaw 接入”。</div>
                     ) : (
                       <div className="space-y-2 max-h-40 overflow-y-auto">
                         {instances.map((item) => (
-                          <div key={item.agentId} className="text-xs border border-indigo-100 rounded p-2">
-                            <div className="font-medium text-indigo-900">{item.agentId}</div>
-                            <div className="text-indigo-700">provider: {item.provider} | scope: {item.scope}</div>
-                            <div className="text-indigo-600 truncate">endpoint: {item.endpoint}</div>
-                            <div className="text-indigo-500">model: {item.model || '-'}</div>
-                            <div className="text-indigo-500">registered: {new Date(item.registeredAt).toLocaleString('zh-CN')}</div>
+                          <div key={item.agentId} className="text-xs border border-teal-100 rounded p-2">
+                            <div className="font-medium text-teal-900">{item.agentId}</div>
+                            <div className="text-teal-700">provider: {item.provider} | scope: {item.scope}</div>
+                            <div className="text-teal-600 truncate">endpoint: {item.endpoint}</div>
+                            <div className="text-teal-500">model: {item.model || '-'}</div>
+                            <div className="text-teal-500">registered: {new Date(item.registeredAt).toLocaleString('zh-CN')}</div>
                           </div>
                         ))}
                       </div>
@@ -982,7 +985,7 @@ export default function ConsultPage() {
                   }
                 }}
                 placeholder="输入你的问题，开始推演..."
-                className="w-full h-24 p-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-blue-400 focus:bg-white transition-colors overflow-hidden"
+                className="w-full h-24 p-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:bg-white transition-colors overflow-hidden"
               />
               <div className="flex justify-end mt-3">
                 <button
@@ -1038,7 +1041,7 @@ export default function ConsultPage() {
                           <span className="text-xl">{msg.agent_avatar}</span>
                           <span className="font-semibold text-slate-800">{msg.agent_name}</span>
                           {msg.is_streaming && (
-                            <span className="text-xs text-blue-500 animate-pulse">输出中...</span>
+                            <span className="text-xs text-teal-500 animate-pulse">输出中...</span>
                           )}
                         </div>
                         <div className="max-w-none text-[0.9375rem] text-slate-700 leading-relaxed">
@@ -1072,7 +1075,7 @@ export default function ConsultPage() {
                     }}
                     placeholder={isAgentResponding ? "等待专家回复..." : "继续追问或补充..."}
                     disabled={isAgentResponding}
-                    className="w-full h-12 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-blue-400 focus:bg-white transition-colors disabled:opacity-50 overflow-hidden"
+                    className="w-full h-12 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:bg-white transition-colors disabled:opacity-50 overflow-hidden"
                     rows={1}
                   />
                 </div>

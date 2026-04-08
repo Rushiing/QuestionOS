@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { AuthButton, useAuth } from '../../components/AuthButton';
 import { sandboxClient } from '../../lib/sandbox-client';
 import { CHAT_INTERNAL_NAV_KEY } from '../../lib/chat-nav';
+import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 
 /**
  * React 18 Strict Mode 下 /chat 会挂载两次：第一次 useLayoutEffect 消费掉站内导航标记后，
@@ -45,7 +46,7 @@ const calibrationMarkdownComponents: Components = {
     if (isInline) {
       return (
         <code
-          className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-sm font-medium"
+          className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-sm font-medium"
           {...props}
         >
           {children}
@@ -63,7 +64,7 @@ const calibrationMarkdownComponents: Components = {
     if (label.includes('本轮追问')) {
       return (
         <div className="mb-3 mt-0">
-          <span className="inline-flex items-center rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-blue-500/30">
+          <span className="inline-flex items-center rounded-full bg-gradient-to-r from-teal-600 to-teal-500 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-teal-500/30">
             本轮追问
           </span>
         </div>
@@ -78,14 +79,14 @@ const calibrationMarkdownComponents: Components = {
   h3({ children }) {
     return (
       <h3 className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold leading-snug text-slate-900">
-        <span className="h-4 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-500 to-indigo-500" aria-hidden />
+        <span className="h-4 w-1 shrink-0 rounded-full bg-gradient-to-b from-teal-500 to-teal-600" aria-hidden />
         <span>{children}</span>
       </h3>
     );
   },
   blockquote({ children }) {
     return (
-      <blockquote className="my-3 rounded-xl border border-blue-100/80 bg-gradient-to-br from-sky-50/90 via-white to-indigo-50/80 px-4 py-3.5 not-italic text-slate-800 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100/80">
+      <blockquote className="my-3 rounded-xl border border-teal-100/80 bg-gradient-to-br from-teal-50/90 via-white to-teal-50/80 px-4 py-3.5 not-italic text-slate-800 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100/80">
         <div className="text-[1.0625rem] font-normal leading-relaxed tracking-tight text-slate-700 [&_strong]:font-normal">
           {children}
         </div>
@@ -398,18 +399,18 @@ function AlchemyMessage({ content, onContinueWithQuestion }: { content: string; 
             const codeContent = String(children);
             const isInline = !codeContent.includes('\n');
             if (isInline) {
-              return <code className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-sm font-medium" {...props}>{children}</code>;
+              return <code className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-sm font-medium" {...props}>{children}</code>;
             }
             return (
               <div className="relative">
-                <pre className="bg-gradient-to-r from-blue-50 to-indigo-50 text-gray-800 p-4 rounded-xl my-3 overflow-x-auto text-sm leading-relaxed whitespace-pre-wrap border border-blue-200 shadow-sm">
+                <pre className="bg-gradient-to-r from-teal-50 to-teal-100/80 text-gray-800 p-4 rounded-xl my-3 overflow-x-auto text-sm leading-relaxed whitespace-pre-wrap border border-teal-200 shadow-sm">
                   <code {...props}>{children}</code>
                 </pre>
               </div>
             );
           },
           blockquote({ children }) {
-            return <blockquote className="border-l-4 border-blue-400 pl-4 py-2 my-2 bg-blue-50 rounded-r-lg text-gray-700">{children}</blockquote>;
+            return <blockquote className="border-l-4 border-teal-400 pl-4 py-2 my-2 bg-teal-50 rounded-r-lg text-gray-700">{children}</blockquote>;
           },
           h2({ children }) {
             return <h2 className="text-xl font-bold text-gray-800 mt-4 mb-3">{children}</h2>;
@@ -419,11 +420,11 @@ function AlchemyMessage({ content, onContinueWithQuestion }: { content: string; 
             const isRefinedTitle = titleText.includes('重构后的天才提问');
             return (
               <div className="flex items-center gap-3 mt-4 mb-2">
-                <h3 className="text-lg font-semibold text-blue-700 flex items-center gap-2">{children}</h3>
+                <h3 className="text-lg font-semibold text-teal-700 flex items-center gap-2">{children}</h3>
                 {isRefinedTitle && hasRefinedQuestion && refinedQuestion && onContinueWithQuestion && (
                   <button
                     onClick={() => onContinueWithQuestion(refinedQuestion)}
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md whitespace-nowrap"
+                    className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md whitespace-nowrap"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -473,7 +474,7 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
               const codeContent = String(children);
               const isInline = !codeContent.includes('\n');
               if (isInline) {
-                return <code className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-sm font-medium" {...props}>{children}</code>;
+                return <code className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-sm font-medium" {...props}>{children}</code>;
               }
               return <pre className="bg-gray-100 text-gray-800 p-4 rounded-xl my-3 overflow-x-auto text-sm whitespace-pre-wrap border border-gray-200"><code {...props}>{children}</code></pre>;
             },
@@ -532,11 +533,11 @@ function CalibrationStreamingSkeleton() {
   return (
     <div className="calibration-md text-sm leading-relaxed">
       <div className="mb-3 mt-0">
-        <span className="inline-flex items-center rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-blue-500/30">
+        <span className="inline-flex items-center rounded-full bg-gradient-to-r from-teal-600 to-teal-500 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-teal-500/30">
           本轮追问
         </span>
       </div>
-      <div className="my-3 rounded-xl border border-blue-100/80 bg-gradient-to-br from-sky-50/90 via-white to-indigo-50/80 px-4 py-3.5 ring-1 ring-slate-100/80">
+      <div className="my-3 rounded-xl border border-teal-100/80 bg-gradient-to-br from-teal-50/90 via-white to-teal-50/80 px-4 py-3.5 ring-1 ring-slate-100/80">
         <div className="space-y-2.5">
           <div className="h-4 max-w-[88%] rounded-md bg-slate-200/70 animate-pulse" />
           <div className="h-4 w-full rounded-md bg-slate-200/60 animate-pulse" />
@@ -635,6 +636,8 @@ function ChatPageContent() {
     
     setShowWelcome(false);
     setValidationError(null);
+
+    const attachBackgroundOnce = messages.filter((m) => m.role === 'user').length === 0;
     
     // 直接用重构后的问题作为用户输入
     const userMessage: Message = {
@@ -658,7 +661,7 @@ function ChatPageContent() {
         updateUrlSession(currentSessionId);
       }
 
-      const fullContent = await sendMessageAndStream(currentSessionId, userMessage.content);
+      const fullContent = await sendMessageAndStream(currentSessionId, userMessage.content, attachBackgroundOnce);
       
       // 添加AI回复
       const assistantMessage: Message = {
@@ -715,10 +718,16 @@ function ChatPageContent() {
 
   const sendMessageAndStream = async (
     sid: string,
-    content: string
+    content: string,
+    attachBackgroundOnce?: boolean
   ): Promise<string> => {
     const idemKey = `idem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    await sandboxClient.sendMessage(sid, content, idemKey);
+    let payload = content;
+    if (attachBackgroundOnce) {
+      const bg = takeBackgroundContext();
+      if (bg) payload = wrapUserMessageWithBackground(content, bg);
+    }
+    await sandboxClient.sendMessage(sid, payload, idemKey);
 
     let streamDone = false;
     let chunkBuf = '';
@@ -790,6 +799,8 @@ function ChatPageContent() {
 
     setShowWelcome(false);
     setValidationError(null);
+
+    const attachBackgroundOnce = messages.filter((m) => m.role === 'user').length === 0;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -872,7 +883,7 @@ function ChatPageContent() {
     }, 280000);
 
     try {
-      let fullContent = await sendMessageAndStream(activeSessionId, messageText.trim());
+      let fullContent = await sendMessageAndStream(activeSessionId, messageText.trim(), attachBackgroundOnce);
       if (timedOut) return;
       if (!fullContent.trim()) {
         const msgList = await sandboxClient.listMessages(activeSessionId);
@@ -990,7 +1001,7 @@ function ChatPageContent() {
                   <button
                     key={i}
                     onClick={() => setInput(q)}
-                    className="px-4 py-2 bg-white text-gray-600 text-sm rounded-full border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all"
+                    className="px-4 py-2 bg-white text-gray-600 text-sm rounded-full border border-gray-200 hover:border-teal-300 hover:bg-teal-50 transition-all"
                   >
                     {q}
                   </button>
@@ -1006,7 +1017,7 @@ function ChatPageContent() {
             </div>
           )}
           {!authLoading && !user && (
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-sm">
+            <div className="mb-4 p-4 bg-teal-50 border border-teal-200 rounded-xl text-teal-800 text-sm">
               当前为访客模式：可浏览页面，登录后可发起对话并查看历史记录。
             </div>
           )}
@@ -1075,9 +1086,9 @@ function ChatPageContent() {
               <div className="flex justify-start">
                 <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></span>
-                    <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-                    <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                    <span className="w-2 h-2 bg-teal-400 rounded-full animate-bounce"></span>
+                    <span className="w-2 h-2 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+                    <span className="w-2 h-2 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
                   </div>
                 </div>
               </div>
@@ -1098,7 +1109,7 @@ function ChatPageContent() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="输入你的回答..."
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-blue-300 focus:bg-white resize-none text-[15px]"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-300 focus:bg-white resize-none text-[15px]"
                 rows={1}
                 style={{ minHeight: '48px', maxHeight: '120px' }}
                 disabled={isLoading || !user}
@@ -1109,8 +1120,8 @@ function ChatPageContent() {
               disabled={isLoading || !user || !input.trim()}
               className={`px-6 py-3 rounded-2xl text-white font-medium transition-all ${
                 isLoading || !user || !input.trim()
-                  ? 'bg-blue-300 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
+                  ? 'bg-teal-300 cursor-not-allowed'
+                  : 'bg-teal-600 hover:bg-teal-700 active:scale-95'
               }`}
             >
               发送

@@ -7,7 +7,7 @@ export default function LoginPage() {
   const [error] = useState('');
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -33,7 +33,7 @@ export default function LoginPage() {
 
           <p className="text-center text-slate-500 text-sm mt-6">
             还没有账号？{' '}
-            <a href="/register" className="text-blue-600 hover:text-blue-700 font-medium">
+            <a href="/register" className="text-teal-600 hover:text-teal-700 font-medium">
               立即注册
             </a>
           </p>

@@ -13,6 +13,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
 
@@ -66,7 +67,7 @@ public class MainCalibrateAgent implements AgentExecutor {
               "detected_biases": ["若有认知偏差线索则列出，否则 []"],
               "clarity_change": 0.12,
               "reasoning": "极短：为何选此 phase/此问",
-              "suggested_direction": "探索向提示，不是替用户拍板"
+              "suggested_direction": "探索向提示，不是替用户拍板；若有多条可探索方向，用中文分号「；」分隔，便于生成行动建议清单"
             }
 
             clarity_change：预估若用户认真回答后清晰度变化，约 -0.1～0.3。
@@ -350,7 +351,50 @@ public class MainCalibrateAgent implements AgentExecutor {
 
         if (!suggested.isEmpty()) {
             sb.append("### 建议探索方向\n\n").append(suggested).append("\n");
+            List<String> actionItems = splitActionItems(suggested);
+            if (!actionItems.isEmpty()) {
+                sb.append("\n### 行动建议清单\n\n");
+                for (String it : actionItems) {
+                    sb.append("- [ ] ").append(it).append("\n");
+                }
+            }
         }
+    }
+
+    /**
+     * 从 suggested_direction 拆成可勾选条目（多行 / 分号 / 单段兜底），供前端 Markdown 任务列表展示。
+     */
+    private static List<String> splitActionItems(String suggested) {
+        List<String> out = new ArrayList<>();
+        if (suggested == null || suggested.isBlank()) {
+            return out;
+        }
+        String s = suggested.trim();
+        String[] byNl = s.split("[\n\r]+");
+        if (byNl.length > 1) {
+            for (String line : byNl) {
+                String t = line.trim().replaceFirst("^[\\d]+[.、．\\s]+", "");
+                if (!t.isEmpty()) {
+                    out.add(t);
+                }
+            }
+            if (!out.isEmpty()) {
+                return out;
+            }
+        }
+        String[] bySemi = s.split("[；;]");
+        if (bySemi.length > 1) {
+            for (String p : bySemi) {
+                String t = p.trim();
+                if (!t.isEmpty()) {
+                    out.add(t);
+                }
+            }
+        }
+        if (out.isEmpty()) {
+            out.add(s);
+        }
+        return out;
     }
 
     /** 多行内容用引用块逐行展示，避免 ** 跨行断掉 */

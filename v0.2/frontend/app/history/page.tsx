@@ -120,7 +120,7 @@ export default function HistoryPage() {
           </div>
           <button
             onClick={() => router.push('/')}
-            className="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-700 transition-colors"
+            className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
           >
             新对话
           </button>
@@ -143,7 +143,7 @@ export default function HistoryPage() {
             <p className="text-slate-500">暂无对话记录</p>
             <button
               onClick={() => router.push('/')}
-              className="mt-4 text-blue-600 hover:text-blue-700 text-sm"
+              className="mt-4 text-teal-600 hover:text-teal-700 text-sm"
             >
               开始第一次对话 →
             </button>
@@ -174,7 +174,7 @@ export default function HistoryPage() {
                           e.stopPropagation();
                           handleContinue(session.id);
                         }}
-                        className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="px-3 py-1.5 text-sm text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                       >
                         继续
                       </button>
