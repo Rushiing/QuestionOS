@@ -9,6 +9,7 @@ import { sandboxClient } from '../../lib/sandbox-client';
 import { CHAT_INTERNAL_NAV_KEY } from '../../lib/chat-nav';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 import { CHAT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
+import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 
 /**
  * React 18 Strict Mode 下 /chat 会挂载两次：第一次 useLayoutEffect 消费掉站内导航标记后，
@@ -455,8 +456,9 @@ function AlchemyMessage({ content, onContinueWithQuestion }: { content: string; 
 
 // AI 消息组件（支持 Markdown + 脑图）
 function AIMessage({ content, onContinueWithQuestion }: { content: string; onContinueWithQuestion?: (question: string) => void }) {
+  const displayContent = formatCalibrationJsonToMarkdown(content);
   // 解析思维脑图
-  const mindMapData = parseMindMapContent(content);
+  const mindMapData = parseMindMapContent(displayContent);
   
   // 如果有思维脑图，渲染脑图（保留文字内容）
   if (mindMapData) {
@@ -493,8 +495,8 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
             },
           }}
         >
-          {content}
-        </ReactMarkdown>
+        {displayContent}
+      </ReactMarkdown>
         
         {/* 思维脑图 */}
         <MindMapView markdown={mindMapData.markdown} title={mindMapData.title} />
@@ -503,11 +505,11 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
   }
   
   // 检测是否是炼金输出（包含💎）
-  const isAlchemyOutput = content.includes('💎');
+  const isAlchemyOutput = displayContent.includes('💎');
   
   // 如果是炼金输出，用专门组件渲染
   if (isAlchemyOutput) {
-    return <AlchemyMessage content={content} onContinueWithQuestion={onContinueWithQuestion} />;
+    return <AlchemyMessage content={displayContent} onContinueWithQuestion={onContinueWithQuestion} />;
   }
 
   /**
@@ -517,7 +519,7 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
   return (
     <div className="calibration-md text-sm leading-relaxed">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={calibrationMarkdownComponents}>
-        {content}
+        {displayContent}
       </ReactMarkdown>
     </div>
   );

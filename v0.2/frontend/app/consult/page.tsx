@@ -10,6 +10,7 @@ import { AgentInstance, OnboardingJobStatus, sandboxClient } from '../../lib/san
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 import { CONSULT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
+import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 
 interface Agent {
   id: string;
@@ -110,7 +111,7 @@ function agentMarkdownSource(msg: Message): string {
   if (isIntegrator) {
     return normalizeIntegratorExpertBullets(raw);
   }
-  return raw;
+  return formatCalibrationJsonToMarkdown(raw);
 }
 
 /** 外聘区「🧩 已接入 Agents」预览卡片：先隐藏；loadInstances / 沙盘三方 slot 仍工作 */
@@ -1089,17 +1090,17 @@ export default function ConsultPage() {
                   key={msg.id}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-2' : 'order-1'}`}>
+                  <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-2' : 'order-1'}`}>
                     {msg.role === 'user' ? (
-                      <div className="bg-slate-800 text-white px-4 py-3 rounded-2xl rounded-tr-md">
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <div className="rounded-2xl px-4 py-3 bg-slate-100 text-slate-800 rounded-br-md">
+                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
                       </div>
                     ) : msg.role === 'system' ? (
                       <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-xl text-sm">
                         {msg.content}
                       </div>
                     ) : (
-                      <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-md">
+                      <div className="bg-white border border-slate-200 text-slate-800 px-4 py-3 rounded-2xl rounded-bl-md shadow-sm overflow-hidden">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xl">{msg.agent_avatar}</span>
                           <span className="font-semibold text-slate-800">{msg.agent_name}</span>
