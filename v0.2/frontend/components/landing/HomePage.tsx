@@ -167,9 +167,9 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* 首屏 + 选择模式：同一视区内紧凑排布，避免「半屏空白」 */}
+      {/* 首屏 + 选择模式：占满一屏并在视区内垂直居中，避免贴导航、底部留白失衡 */}
       <section
-        className="relative pt-20 sm:pt-24 pb-10 md:pb-14 px-6 overflow-hidden bg-gradient-to-b from-white via-white to-gray-50/60"
+        className="relative min-h-[100svh] flex flex-col justify-center px-6 pt-28 pb-12 sm:pt-32 sm:pb-14 md:pb-16 overflow-hidden bg-gradient-to-b from-white via-white to-gray-50/60"
         aria-label="首屏介绍与选择模式"
       >
         <div
