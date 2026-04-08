@@ -9,6 +9,7 @@ import { AuthButton, useAuth } from '../../components/AuthButton';
 import { AgentInstance, OnboardingJobStatus, sandboxClient } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
+import { CONSULT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
 
 interface Agent {
   id: string;
@@ -150,6 +151,8 @@ export default function ConsultPage() {
   const [puzzleHover, setPuzzleHover] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  /** 未开局时先展示推荐场景，点选或「自己写」后再露出议题输入区 */
+  const [starterComposerVisible, setStarterComposerVisible] = useState(false);
   const lastSeqRef = useRef<number>(0);
   const hasStreamActivityRef = useRef<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -233,6 +236,7 @@ export default function ConsultPage() {
     const storedQuestion = sessionStorage.getItem('consultQuestion');
     if (storedQuestion) {
       setInputMessage(storedQuestion);
+      setStarterComposerVisible(true);
       sessionStorage.removeItem('consultQuestion');
     }
   }, []);
@@ -686,6 +690,7 @@ export default function ConsultPage() {
     setSessionStarted(false);
     setMessages([]);
     setInputMessage('');
+    setStarterComposerVisible(false);
     setIsAgentResponding(false);
     setSessionId(null);
     lastSeqRef.current = 0;
@@ -693,25 +698,34 @@ export default function ConsultPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
+              type="button"
               onClick={() => router.push('/')}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
-            <div>
-              <h1 className="text-lg font-semibold text-slate-800">⚔️ 沙盘推演</h1>
-              <p className="text-xs text-slate-500">
-                {sessionStarted
-                  ? `充分讨论 | 状态: ${isAgentResponding ? '等待中' : '可输入'}${sessionId ? ` | #${sessionId.slice(0, 8)}` : ''}`
-                  : '修罗场压力测试'}
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-teal-400 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-teal-500/20 shrink-0">
+              Q
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-base font-bold text-gray-900 leading-tight">QuestionOS</h1>
+              <p className="text-xs text-gray-500">
+                <span className="font-medium text-teal-800">⚔️ 沙盘推演</span>
+                {sessionStarted && sessionId ? (
+                  <span className="ml-2 text-gray-400 font-mono break-all" title={sessionId}>
+                    #{sessionId}
+                  </span>
+                ) : (
+                  <span className="ml-2">多角色辩论 · 压力测试</span>
+                )}
               </p>
             </div>
           </div>
@@ -972,31 +986,80 @@ export default function ConsultPage() {
                 </div>
               )}
             </div>
-            
-            <div className="bg-white rounded-2xl border border-slate-200 p-4">
-              <textarea
-                ref={inputRef}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleStartSession();
-                  }
-                }}
-                placeholder="输入你的问题，开始推演..."
-                className="w-full h-24 p-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:bg-white transition-colors overflow-hidden"
-              />
-              <div className="flex justify-end mt-3">
-                <button
-                  onClick={handleStartSession}
-                  disabled={!inputMessage.trim() || isAgentResponding}
-                  className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  ⚔️ 开始推演
-                </button>
+
+            <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50/60 via-white to-white p-6 sm:p-8 mb-6 shadow-sm shadow-teal-500/5">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">想推演什么情境？</h2>
+              <p className="text-gray-600 text-sm sm:text-base mb-6 leading-relaxed">
+                内置多角色将围绕你的议题辩论与整合。可先选推荐场景填入议题，再开始推演。
+              </p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-teal-800 mb-3">推荐场景</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {CONSULT_RECOMMENDED_SCENARIOS.map((q, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      if (!isLoggedIn) {
+                        setIntegrationHint('请先登录后开始沙盘推演。');
+                        router.push('/login');
+                        return;
+                      }
+                      setInputMessage(q);
+                      setStarterComposerVisible(true);
+                    }}
+                    className="text-left px-4 py-3.5 rounded-xl bg-white text-gray-800 text-sm font-medium border border-gray-200 hover:border-teal-400 hover:bg-teal-50/80 hover:shadow-sm transition-all leading-snug"
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    router.push('/login');
+                    return;
+                  }
+                  setStarterComposerVisible(true);
+                }}
+                className="mt-6 text-sm font-semibold text-teal-700 hover:text-teal-800 underline-offset-2 hover:underline"
+              >
+                或自己写推演议题 ↓
+              </button>
             </div>
+
+            {starterComposerVisible && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                <label className="block text-xs font-medium text-gray-500 mb-2">推演议题</label>
+                <textarea
+                  ref={inputRef}
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleStartSession();
+                    }
+                  }}
+                  placeholder="描述要推演的情境、方案或争议点…"
+                  className="w-full h-28 p-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white transition-colors overflow-hidden text-[15px]"
+                />
+                <div className="flex justify-end mt-3">
+                  <button
+                    type="button"
+                    onClick={handleStartSession}
+                    disabled={!inputMessage.trim() || isAgentResponding}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-md shadow-teal-500/20 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+                  >
+                    ⚔️ 开始推演
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!starterComposerVisible && (
+              <p className="text-center text-sm text-gray-400 py-3">点选上方推荐场景，或点击「自己写推演议题」以显示输入框</p>
+            )}
           </div>
         )}
 
@@ -1075,14 +1138,15 @@ export default function ConsultPage() {
                     }}
                     placeholder={isAgentResponding ? "等待专家回复..." : "继续追问或补充..."}
                     disabled={isAgentResponding}
-                    className="w-full h-12 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:bg-white transition-colors disabled:opacity-50 overflow-hidden"
+                    className="w-full h-12 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white transition-colors disabled:opacity-50 overflow-hidden"
                     rows={1}
                   />
                 </div>
                 <button
+                  type="button"
                   onClick={handleSendMessage}
                   disabled={!inputMessage.trim() || isAgentResponding || !sessionId}
-                  className="px-4 py-2 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-5 py-2 rounded-xl font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-md shadow-teal-500/15 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
                 >
                   发送
                 </button>

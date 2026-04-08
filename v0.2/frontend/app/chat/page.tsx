@@ -8,6 +8,7 @@ import { AuthButton, useAuth } from '../../components/AuthButton';
 import { sandboxClient } from '../../lib/sandbox-client';
 import { CHAT_INTERNAL_NAV_KEY } from '../../lib/chat-nav';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
+import { CHAT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
 
 /**
  * React 18 Strict Mode 下 /chat 会挂载两次：第一次 useLayoutEffect 消费掉站内导航标记后，
@@ -20,12 +21,6 @@ interface Message {
   content: string;
   timestamp: Date;
 }
-
-const EXAMPLE_QUESTIONS = [
-  "我想转行但担心沉没成本，该怎么决策？",
-  "团队有两个技术方案，如何评估选择？",
-  "最近工作效率很低，总是拖延，怎么办？",
-];
 
 function markdownChildrenToPlainText(node: ReactNode): string {
   if (node == null || typeof node === 'boolean') return '';
@@ -572,7 +567,11 @@ function ChatPageContent() {
   const [streamingSkeletonActive, setStreamingSkeletonActive] = useState(false);
   /** 非 null 时对 streamingContent 做打字机式逐字显现（与骨架衔接） */
   const [streamingTypeTarget, setStreamingTypeTarget] = useState<string | null>(null);
+  /** 欢迎态下先展示推荐场景；点此或发首条后才露出底部输入框 */
+  const [composerUnlocked, setComposerUnlocked] = useState(false);
   const lastSeqRef = useRef<number>(0);
+
+  const showInputBar = composerUnlocked || messages.length > 0;
 
   useEffect(() => {
     if (streamingTypeTarget === null) {
@@ -940,24 +939,27 @@ function ChatPageContent() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gradient-to-b from-gray-50 to-white">
       {/* Header */}
-      <header className="bg-white border-b border-gray-100 px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 px-6 py-4 sticky top-0 z-20">
+        <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={handleNewChat}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="新对话"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+              title="回首页"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
-            <div>
-              <h1 className="text-lg font-semibold text-gray-800">QuestionOS</h1>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-teal-400 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-teal-500/20 shrink-0">
+              Q
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-base font-bold text-gray-900 leading-tight">QuestionOS</h1>
               <p className="text-xs text-gray-500">
-                问题校准助手
+                思维校准 · 单轮追问
                 {sessionId && (
                   <span className="ml-2 text-gray-400 font-mono break-all" title={sessionId}>
                     #{sessionId}
@@ -966,22 +968,23 @@ function ChatPageContent() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-green-600">
-            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            在线
-          </div>
-          {user && (
-            <button
-              onClick={() => router.push('/history')}
-              className="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              历史
-            </button>
-          )}
-          <div className="ml-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-teal-700 font-medium">
+              <span className="w-1.5 h-1.5 bg-teal-500 rounded-full" />
+              在线
+            </div>
+            {user && (
+              <button
+                type="button"
+                onClick={() => router.push('/history')}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-teal-50 rounded-lg transition-colors text-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                历史
+              </button>
+            )}
             <AuthButton />
           </div>
         </div>
@@ -992,21 +995,40 @@ function ChatPageContent() {
         <div className="max-w-3xl mx-auto px-6 py-8">
           {/* Welcome */}
           {showWelcome && messages.length === 0 && (
-            <div className="mb-8">
-              <h2 className="text-2xl font-light text-gray-700 mb-4">你在想什么问题？</h2>
-              <p className="text-gray-500 mb-6">我会通过追问帮你理清问题的本质</p>
-              
-              <div className="flex flex-wrap gap-2 mb-6">
-                {EXAMPLE_QUESTIONS.map((q, i) => (
+            <div className="mb-10 rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50/60 via-white to-white p-6 sm:p-8 shadow-sm shadow-teal-500/5">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">你在想什么问题？</h2>
+              <p className="text-gray-600 text-sm sm:text-base mb-6 leading-relaxed">
+                我会通过追问帮你理清问题的本质。可先选一条推荐场景直接开始，或展开输入框自己写。
+              </p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-teal-800 mb-3">推荐场景</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {CHAT_RECOMMENDED_SCENARIOS.map((q, i) => (
                   <button
                     key={i}
-                    onClick={() => setInput(q)}
-                    className="px-4 py-2 bg-white text-gray-600 text-sm rounded-full border border-gray-200 hover:border-teal-300 hover:bg-teal-50 transition-all"
+                    type="button"
+                    onClick={() => {
+                      if (!user) {
+                        setValidationError('请先登录后再开始对话');
+                        setTimeout(() => setValidationError(null), 4000);
+                        return;
+                      }
+                      void handleSendMessage(q);
+                    }}
+                    className="text-left px-4 py-3.5 rounded-xl bg-white text-gray-800 text-sm font-medium border border-gray-200 hover:border-teal-400 hover:bg-teal-50/80 hover:shadow-sm transition-all leading-snug"
                   >
                     {q}
                   </button>
                 ))}
               </div>
+              {!composerUnlocked && (
+                <button
+                  type="button"
+                  onClick={() => setComposerUnlocked(true)}
+                  className="mt-6 text-sm font-semibold text-teal-700 hover:text-teal-800 underline-offset-2 hover:underline"
+                >
+                  或自己输入问题 ↓
+                </button>
+              )}
             </div>
           )}
 
@@ -1099,36 +1121,39 @@ function ChatPageContent() {
         </div>
       </div>
 
-      {/* Input */}
-      <div className="border-t border-gray-100 bg-white px-6 py-4">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex gap-3 items-end">
-            <div className="flex-1 relative">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="输入你的回答..."
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-300 focus:bg-white resize-none text-[15px]"
-                rows={1}
-                style={{ minHeight: '48px', maxHeight: '120px' }}
-                disabled={isLoading || !user}
-              />
+      {/* Input：欢迎态下先选场景或点「自己输入」后再显示 */}
+      {showInputBar && (
+        <div className="border-t border-gray-200 bg-white/90 backdrop-blur-sm px-6 py-4 shrink-0">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex gap-3 items-end">
+              <div className="flex-1 relative">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={user ? '输入你的回答…' : '登录后开始对话'}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white resize-none text-[15px]"
+                  rows={1}
+                  style={{ minHeight: '48px', maxHeight: '120px' }}
+                  disabled={isLoading || !user}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSendMessage()}
+                disabled={isLoading || !user || !input.trim()}
+                className={`px-6 py-3 rounded-2xl text-white font-semibold transition-all shadow-md shadow-teal-500/20 ${
+                  isLoading || !user || !input.trim()
+                    ? 'bg-teal-300 cursor-not-allowed shadow-none'
+                    : 'bg-gradient-to-br from-teal-500 to-teal-400 hover:shadow-lg active:scale-[0.98]'
+                }`}
+              >
+                发送
+              </button>
             </div>
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={isLoading || !user || !input.trim()}
-              className={`px-6 py-3 rounded-2xl text-white font-medium transition-all ${
-                isLoading || !user || !input.trim()
-                  ? 'bg-teal-300 cursor-not-allowed'
-                  : 'bg-teal-600 hover:bg-teal-700 active:scale-95'
-              }`}
-            >
-              发送
-            </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
