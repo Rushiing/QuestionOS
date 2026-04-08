@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthButton, useAuth } from '../AuthButton';
 import { markInternalChatNav } from '../../lib/chat-nav';
 import { setBackgroundContext } from '../../lib/background-context';
@@ -51,6 +51,7 @@ export default function HomePage() {
   const router = useRouter();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const experienceFormRef = useRef<HTMLDivElement>(null);
   const [backgroundText, setBackgroundText] = useState('');
   const [scenariosExpanded, setScenariosExpanded] = useState(false);
   const [selectedMode, setSelectedMode] = useState<'calibrate' | 'consult' | null>(null);
@@ -64,6 +65,15 @@ export default function HomePage() {
     document.getElementById('experience')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  /** 点选模式后表单挂载，滚到问题输入区（避免仍停在双卡上方） */
+  useEffect(() => {
+    if (!selectedMode) return;
+    const id = requestAnimationFrame(() => {
+      experienceFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selectedMode]);
+
   const requireUser = useCallback(
     (fn: () => void) => {
       if (!user) {
@@ -75,23 +85,15 @@ export default function HomePage() {
     [user, router]
   );
 
-  const selectCalibrate = useCallback(
-    (prefill?: string) => {
-      setSelectedMode('calibrate');
-      if (prefill !== undefined) setExperienceQuestion(prefill);
-      scrollToExperience();
-    },
-    [scrollToExperience]
-  );
+  const selectCalibrate = useCallback((prefill?: string) => {
+    setSelectedMode('calibrate');
+    if (prefill !== undefined) setExperienceQuestion(prefill);
+  }, []);
 
-  const selectConsult = useCallback(
-    (prefill?: string) => {
-      setSelectedMode('consult');
-      if (prefill !== undefined) setExperienceQuestion(prefill);
-      scrollToExperience();
-    },
-    [scrollToExperience]
-  );
+  const selectConsult = useCallback((prefill?: string) => {
+    setSelectedMode('consult');
+    if (prefill !== undefined) setExperienceQuestion(prefill);
+  }, []);
 
   const handleExperienceSubmit = useCallback(() => {
     if (!selectedMode || !experienceQuestion.trim()) return;
@@ -165,34 +167,38 @@ export default function HomePage() {
         </div>
       </nav>
 
-      <section className="relative min-h-screen flex flex-col justify-center pt-24 pb-16 px-6 overflow-hidden" aria-label="首屏介绍">
+      {/* 首屏 + 选择模式：同一视区内紧凑排布，避免「半屏空白」 */}
+      <section
+        className="relative pt-20 sm:pt-24 pb-10 md:pb-14 px-6 overflow-hidden bg-gradient-to-b from-white via-white to-gray-50/60"
+        aria-label="首屏介绍与选择模式"
+      >
         <div
-          className="pointer-events-none absolute w-[450px] h-[450px] rounded-full bg-teal-500/[0.06] blur-[60px] -top-24 -right-24"
+          className="pointer-events-none absolute w-[min(100vw,28rem)] h-[min(100vw,28rem)] max-w-[450px] max-h-[450px] rounded-full bg-teal-500/[0.06] blur-[60px] -top-16 -right-16"
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute w-[450px] h-[450px] rounded-full bg-teal-500/[0.06] blur-[60px] -bottom-32 -left-24"
+          className="pointer-events-none absolute w-[min(100vw,24rem)] h-[min(100vw,24rem)] max-w-[380px] max-h-[380px] rounded-full bg-teal-500/[0.05] blur-[50px] bottom-0 -left-12"
           aria-hidden
         />
 
         <div className="relative z-10 max-w-6xl mx-auto w-full">
-          <header className="text-center mb-10">
-            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-gray-900 tracking-tight leading-tight mb-4">
+          <header className="text-center mb-5 sm:mb-6">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-gray-900 tracking-tight leading-[1.08] mb-2 sm:mb-3">
               QuestionOS
             </h1>
-            <p className="text-xl sm:text-2xl md:text-3xl font-semibold text-gray-800 mb-3">让问题更清晰，让决策更明智</p>
-            <p className="text-base sm:text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-              将模糊的问题转化为清晰可执行的指令
-              <br className="hidden sm:block" />
-              通过 AI 对话发现思维盲点
+            <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800 mb-2">
+              让问题更清晰，让决策更明智
+            </p>
+            <p className="text-sm sm:text-base text-gray-500 max-w-2xl mx-auto leading-relaxed">
+              将模糊的问题转化为清晰可执行的指令；通过 AI 对话发现思维盲点
             </p>
           </header>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-4 sm:mb-5">
             <button
               type="button"
               onClick={scrollToExperience}
-              className="inline-flex items-center justify-center gap-2 rounded-xl px-10 py-4 text-lg font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-lg shadow-teal-500/25 hover:shadow-xl hover:shadow-teal-500/30 hover:-translate-y-0.5 transition-all"
+              className="inline-flex items-center justify-center gap-2 rounded-xl px-8 sm:px-10 py-3 sm:py-3.5 text-base sm:text-lg font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-lg shadow-teal-500/25 hover:shadow-xl hover:shadow-teal-500/30 hover:-translate-y-0.5 transition-all"
             >
               立即体验
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -201,80 +207,77 @@ export default function HomePage() {
             </button>
             <a
               href="#features"
-              className="inline-flex items-center justify-center rounded-xl px-10 py-4 text-lg font-semibold border-2 border-teal-500 text-teal-600 hover:bg-teal-50 transition-all"
+              className="inline-flex items-center justify-center rounded-xl px-8 sm:px-10 py-3 sm:py-3.5 text-base sm:text-lg font-semibold border-2 border-teal-500 text-teal-600 hover:bg-teal-50 transition-all"
             >
               了解更多
             </a>
           </div>
 
-          <p className="text-center text-sm text-gray-500 max-w-xl mx-auto">
-            向下选择「思维校准」或「沙盘推演」，选中后再填写问题与可选背景资料。
-          </p>
-        </div>
-      </section>
-
-      {/* 先选模式，再出现输入区 */}
-      <section
-        id="experience"
-        className="relative scroll-mt-28 py-16 px-6 bg-gradient-to-b from-gray-50/80 to-white border-t border-gray-100"
-        aria-labelledby="experience-heading"
-      >
-        <div className="max-w-4xl mx-auto">
-          <header className="text-center mb-10">
-            <h2 id="experience-heading" className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-              选择模式
-            </h2>
-            <p className="text-gray-500 text-sm sm:text-base">
-              点选一种能力后，在下方输入你的问题；登录后即可开始。
-            </p>
-          </header>
-
-          <div className="grid md:grid-cols-2 gap-5 max-w-3xl mx-auto">
-            <button
-              type="button"
-              onClick={() => selectCalibrate()}
-              className={`text-left rounded-2xl border-2 bg-white p-7 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${
-                selectedMode === 'calibrate'
-                  ? 'border-teal-500 ring-2 ring-teal-200'
-                  : 'border-gray-200 hover:border-teal-200'
-              }`}
-            >
-              <div className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl mb-4 bg-teal-500/[0.08] border border-teal-500/15">
-                🔍
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-1">思维校准</h3>
-              <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 border border-teal-500/20 mb-2">
-                单 Agent 多轮对话
-              </span>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                理清问题、不给现成答案，用追问帮你自己想清楚。
+          <div
+            id="experience"
+            className="scroll-mt-28 max-w-4xl mx-auto border-t border-gray-100/80 pt-6 sm:pt-7 mt-2"
+            aria-labelledby="experience-heading"
+          >
+            <header className="text-center mb-5 sm:mb-6">
+              <h2 id="experience-heading" className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1.5">
+                选择模式
+              </h2>
+              <p className="text-gray-500 text-xs sm:text-sm max-w-lg mx-auto">
+                点选「思维校准」或「沙盘推演」后填写问题与可选背景；登录后即可开始。
               </p>
-            </button>
+            </header>
 
-            <button
-              type="button"
-              onClick={() => selectConsult()}
-              className={`text-left rounded-2xl border-2 bg-white p-7 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${
-                selectedMode === 'consult'
-                  ? 'border-teal-500 ring-2 ring-teal-200'
-                  : 'border-gray-200 hover:border-teal-200'
-              }`}
-            >
-              <div className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl mb-4 bg-teal-500/[0.08] border border-teal-500/15">
-                ⚔️
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-1">沙盘推演</h3>
-              <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 border border-teal-500/20 mb-2">
-                多 Agent 模拟辩论
-              </span>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                多角色碰撞与压力测试，适合方案论证与共识拉扯。
-              </p>
-            </button>
-          </div>
+            <div className="grid md:grid-cols-2 gap-4 sm:gap-5 max-w-3xl mx-auto">
+              <button
+                type="button"
+                onClick={() => selectCalibrate()}
+                className={`text-left rounded-2xl border-2 bg-white p-5 sm:p-6 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${
+                  selectedMode === 'calibrate'
+                    ? 'border-teal-500 ring-2 ring-teal-200'
+                    : 'border-gray-200 hover:border-teal-200'
+                }`}
+              >
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center text-xl sm:text-2xl mb-3 bg-teal-500/[0.08] border border-teal-500/15">
+                  🔍
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">思维校准</h3>
+                <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 border border-teal-500/20 mb-2">
+                  单 Agent 多轮对话
+                </span>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  理清问题、不给现成答案，用追问帮你自己想清楚。
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => selectConsult()}
+                className={`text-left rounded-2xl border-2 bg-white p-5 sm:p-6 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${
+                  selectedMode === 'consult'
+                    ? 'border-teal-500 ring-2 ring-teal-200'
+                    : 'border-gray-200 hover:border-teal-200'
+                }`}
+              >
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center text-xl sm:text-2xl mb-3 bg-teal-500/[0.08] border border-teal-500/15">
+                  ⚔️
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">沙盘推演</h3>
+                <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 border border-teal-500/20 mb-2">
+                  多 Agent 模拟辩论
+                </span>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  多角色碰撞与压力测试，适合方案论证与共识拉扯。
+                </p>
+              </button>
+            </div>
 
           {selectedMode && (
-            <div className="max-w-2xl mx-auto mt-10 space-y-5">
+            <div
+              ref={experienceFormRef}
+              id="experience-form"
+              className="scroll-mt-28 max-w-2xl mx-auto mt-8 sm:mt-9 space-y-5"
+              tabIndex={-1}
+            >
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">你要解决什么问题？</label>
                 <textarea
@@ -330,8 +333,9 @@ export default function HomePage() {
           )}
 
           {!selectedMode && (
-            <p className="text-center text-sm text-gray-400 mt-8">↑ 请先点选「思维校准」或「沙盘推演」</p>
+            <p className="text-center text-sm text-gray-400 mt-5 sm:mt-6">↑ 请先点选「思维校准」或「沙盘推演」</p>
           )}
+          </div>
         </div>
       </section>
 
