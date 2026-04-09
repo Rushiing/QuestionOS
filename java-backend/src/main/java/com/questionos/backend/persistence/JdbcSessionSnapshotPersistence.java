@@ -7,7 +7,6 @@ import com.questionos.backend.domain.SessionMode;
 import com.questionos.backend.domain.SessionStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
@@ -26,10 +25,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * PostgreSQL 持久化；需激活 {@code postgres} 配置并设置 {@code questionos.session.persistence.backend=jdbc}。
+ * PostgreSQL 持久化；profile=postgres 且 {@code questionos.session.persistence.backend=jdbc}。
+ * 不使用 {@code @ConditionalOnBean(DataSource)}：在 WebFlux 启动链里该条件可能早于 DataSource 注册，导致本 Bean 被错误跳过且无其它 SessionSnapshotPersistence 实现。
  */
 @Component
-@ConditionalOnBean(DataSource.class)
 @ConditionalOnProperty(name = "questionos.session.persistence.backend", havingValue = "jdbc")
 public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistence {
     private static final Logger log = LoggerFactory.getLogger(JdbcSessionSnapshotPersistence.class);
