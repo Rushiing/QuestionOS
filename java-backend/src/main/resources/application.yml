@@ -6,6 +6,9 @@ server:
 spring:
   application:
     name: questionos-java-backend
+  # multipart / 背景文档解析（≤2MB）需要抬高内存缓冲上限
+  codec:
+    max-in-memory-size: 3MB
 
 management:
   endpoints:
@@ -16,6 +19,9 @@ management:
 questionos:
   auth:
     sandbox-token: ${QUESTIONOS_SANDBOX_TOKEN:sk-sandbox-dev}
+    # 生产务必设置强随机串；用于签发登录 JWT（无状态，重启/多实例仍可用同一 token 校验）
+    jwt:
+      secret: ${QUESTIONOS_AUTH_JWT_SECRET:}
     google:
       client-id: ${QUESTIONOS_GOOGLE_CLIENT_ID:}
   cors:

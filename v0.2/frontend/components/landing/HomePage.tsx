@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthButton, useAuth } from '../AuthButton';
 import { markInternalChatNav } from '../../lib/chat-nav';
-import { setBackgroundContext } from '../../lib/background-context';
+import { extractBackgroundDocument } from '../../lib/background-extract';
+import { setBackgroundContext, truncateBackgroundText } from '../../lib/background-context';
 
 const SCENARIO_GROUPS: { icon: string; title: string; items: string[] }[] = [
   {
@@ -39,6 +40,14 @@ const SCENARIO_GROUPS: { icon: string; title: string; items: string[] }[] = [
   },
 ];
 
+const MAX_BG_FILE_BYTES = 2 * 1024 * 1024;
+const BG_TEXT_EXT = new Set(['txt', 'md', 'markdown']);
+
+function backgroundFileExt(name: string): string {
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : '';
+}
+
 const EXTRA_SCENARIOS = [
   '团队有两个技术方案，如何评估选择？',
   '最近工作效率很低，总是拖延，怎么办？',
@@ -53,6 +62,9 @@ export default function HomePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const experienceFormRef = useRef<HTMLDivElement>(null);
   const [backgroundText, setBackgroundText] = useState('');
+  const [backgroundFileName, setBackgroundFileName] = useState<string | null>(null);
+  const [backgroundBusy, setBackgroundBusy] = useState(false);
+  const [backgroundErr, setBackgroundErr] = useState<string | null>(null);
   const [scenariosExpanded, setScenariosExpanded] = useState(false);
   const [selectedMode, setSelectedMode] = useState<'calibrate' | 'consult' | null>(null);
   const [experienceQuestion, setExperienceQuestion] = useState('');
@@ -110,16 +122,56 @@ export default function HomePage() {
     });
   }, [selectedMode, experienceQuestion, requireUser, persistBackground, router]);
 
+  const clearBackgroundFile = useCallback(() => {
+    setBackgroundText('');
+    setBackgroundFileName(null);
+    setBackgroundErr(null);
+  }, []);
+
+  const prevUserRef = useRef(user);
+  useEffect(() => {
+    if (prevUserRef.current && !user && (backgroundText || backgroundFileName)) {
+      clearBackgroundFile();
+    }
+    prevUserRef.current = user;
+  }, [user, backgroundText, backgroundFileName, clearBackgroundFile]);
+
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
     if (!f) return;
-    if (f.size > 128 * 1024) {
-      alert('文件请小于 128KB；大文档请粘贴摘要。');
+    setBackgroundErr(null);
+    if (!user) {
+      setBackgroundErr('请先登录后再上传背景文件');
       return;
     }
-    const text = await f.text();
-    setBackgroundText((prev) => (prev ? `${prev}\n\n---\n\n${text}` : text));
+    if (f.size > MAX_BG_FILE_BYTES) {
+      setBackgroundErr('单文件请小于 2MB');
+      return;
+    }
+    const ext = backgroundFileExt(f.name);
+    if (!['txt', 'md', 'markdown', 'doc', 'docx'].includes(ext)) {
+      setBackgroundErr('仅支持 .txt / .md / .doc / .docx');
+      return;
+    }
+    setBackgroundBusy(true);
+    try {
+      let text: string;
+      if (BG_TEXT_EXT.has(ext)) {
+        text = await f.text();
+      } else {
+        const r = await extractBackgroundDocument(f);
+        text = r.text;
+      }
+      setBackgroundText(truncateBackgroundText(text));
+      setBackgroundFileName(f.name);
+    } catch (err) {
+      setBackgroundErr(err instanceof Error ? err.message : '读取失败');
+      setBackgroundFileName(null);
+      setBackgroundText('');
+    } finally {
+      setBackgroundBusy(false);
+    }
   };
 
   return (
@@ -223,7 +275,7 @@ export default function HomePage() {
                 选择模式
               </h2>
               <p className="text-gray-500 text-xs sm:text-sm max-w-lg mx-auto">
-                点选「思维校准」或「沙盘推演」后填写问题与可选背景；登录后即可开始。
+                点选模式后填写问题；可选上传背景文件（纯文本抽取）。进入对话前请登录。
               </p>
             </header>
 
@@ -293,27 +345,59 @@ export default function HomePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">背景资料（可选）（开发中）</label>
-                <p className="text-xs text-gray-500 mb-2">
-                  粘贴摘要，或上传 .txt / .md（&lt;128KB）；将附在首轮消息中。
+                <label className="block text-sm font-medium text-gray-700 mb-2">背景资料（可选）</label>
+                <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                  仅支持上传文件，抽取<strong className="font-medium text-gray-600">纯文本</strong>后附在首轮对话：.txt / .md / .doc / .docx，单文件小于 2MB。需登录后上传。
                 </p>
-                <textarea
-                  value={backgroundText}
-                  onChange={(e) => setBackgroundText(e.target.value)}
-                  placeholder="会议记录、需求片段、约束条件等…"
-                  rows={3}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-800 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none resize-y"
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.md,.markdown,.doc,.docx,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={onPickFile}
                 />
-                <div className="flex flex-wrap items-center gap-3 mt-2">
-                  <input ref={fileInputRef} type="file" accept=".txt,.md,text/plain,text/markdown" className="hidden" onChange={onPickFile} />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-sm font-medium text-teal-600 hover:text-teal-700"
-                  >
-                    上传文本文件
-                  </button>
+                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/90 px-4 py-5 text-center">
+                  {backgroundFileName ? (
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 text-sm text-gray-700">
+                      <span className="font-medium text-teal-800 truncate" title={backgroundFileName}>
+                        已选：{backgroundFileName}
+                      </span>
+                      <div className="flex justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={backgroundBusy || !user}
+                          className="text-sm font-semibold text-teal-600 hover:text-teal-700 disabled:opacity-40"
+                        >
+                          更换文件
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearBackgroundFile}
+                          disabled={backgroundBusy || !user}
+                          className="text-sm font-medium text-gray-500 hover:text-rose-600 disabled:opacity-40"
+                        >
+                          移除
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={backgroundBusy || !user}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-teal-400 bg-white px-5 py-2.5 text-sm font-semibold text-teal-700 shadow-sm hover:bg-teal-50 disabled:opacity-40 transition-colors"
+                    >
+                      <span aria-hidden>📎</span>
+                      选择背景文件
+                    </button>
+                  )}
                 </div>
+                {!user && (
+                  <p className="text-xs text-gray-500 mt-2 text-center">请先在右上角登录后再上传背景文件。</p>
+                )}
+                {backgroundBusy && <p className="text-xs text-teal-600 mt-2 text-center">正在读取并抽取文本…</p>}
+                {backgroundErr && <p className="text-xs text-rose-600 mt-2 text-center">{backgroundErr}</p>}
               </div>
               <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
                 <button
@@ -492,8 +576,8 @@ export default function HomePage() {
               {
                 n: '2',
                 t: '描述问题',
-                d: '用自然语言描述困境；可上传或粘贴背景资料（开发中）',
-                hint: ['✍️ 支持中英文', '📎 首轮附带背景资料（开发中）'],
+                d: '用自然语言描述困境；可上传 .txt / .md / .doc / .docx 作为背景（抽取纯文本）',
+                hint: ['✍️ 支持中英文', '📎 首轮可附带背景文件'],
               },
               {
                 n: '3',

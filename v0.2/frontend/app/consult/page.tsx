@@ -10,6 +10,7 @@ import { AgentInstance, OnboardingJobStatus, sandboxClient } from '../../lib/san
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 import { CONSULT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
+import { handleEnterToSubmit } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 
 interface Agent {
@@ -1036,12 +1037,7 @@ export default function ConsultPage() {
                   ref={inputRef}
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleStartSession();
-                    }
-                  }}
+                  onKeyDown={(e) => handleEnterToSubmit(e, () => void handleStartSession())}
                   placeholder="描述要推演的情境、方案或争议点…"
                   className="w-full h-28 p-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white transition-colors overflow-hidden text-[15px]"
                 />
@@ -1131,12 +1127,7 @@ export default function ConsultPage() {
                     ref={inputRef}
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
+                    onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                     placeholder={isAgentResponding ? "等待专家回复..." : "继续追问或补充..."}
                     disabled={isAgentResponding}
                     className="w-full h-12 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white transition-colors disabled:opacity-50 overflow-hidden"

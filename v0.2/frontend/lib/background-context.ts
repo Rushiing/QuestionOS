@@ -1,9 +1,17 @@
 /**
  * 首页「背景资料」：随首轮用户消息一并发给后端（chat / consult），用后即清。
- * 仅存 sessionStorage，不上传服务器文件存储。
+ * 仅存 sessionStorage；原文为本地读取或后端抽取的纯文本，不落盘文件存储。
  */
 const STORAGE_KEY = 'qos_background_context';
-const MAX_CHARS = 28000;
+
+/** 与 Java BackgroundTextExtractService.MAX_CHARS 对齐 */
+export const MAX_BACKGROUND_CHARS = 28000;
+
+export function truncateBackgroundText(s: string): string {
+  const t = s.trim();
+  if (t.length <= MAX_BACKGROUND_CHARS) return t;
+  return `${t.slice(0, MAX_BACKGROUND_CHARS)}\n\n…（已截断）`;
+}
 
 export function setBackgroundContext(text: string): void {
   const t = text.trim();
@@ -11,7 +19,7 @@ export function setBackgroundContext(text: string): void {
     sessionStorage.removeItem(STORAGE_KEY);
     return;
   }
-  sessionStorage.setItem(STORAGE_KEY, t.slice(0, MAX_CHARS));
+  sessionStorage.setItem(STORAGE_KEY, truncateBackgroundText(t));
 }
 
 export function readBackgroundContext(): string | null {
@@ -28,6 +36,6 @@ export function takeBackgroundContext(): string | null {
 
 export function wrapUserMessageWithBackground(question: string, background: string): string {
   return (
-    `### 附：背景资料（用户上传/粘贴）\n\n${background.trim()}\n\n---\n\n### 本轮问题\n\n${question.trim()}`
+    `### 附：背景资料（用户上传文件抽取的纯文本）\n\n${background.trim()}\n\n---\n\n### 本轮问题\n\n${question.trim()}`
   );
 }

@@ -9,6 +9,7 @@ import { sandboxClient } from '../../lib/sandbox-client';
 import { CHAT_INTERNAL_NAV_KEY } from '../../lib/chat-nav';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 import { CHAT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
+import { handleEnterToSubmit } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 
 /**
@@ -929,13 +930,6 @@ function ChatPageContent() {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
   const handleNewChat = () => {
     router.push('/');
   };
@@ -1132,7 +1126,7 @@ function ChatPageContent() {
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                   placeholder={user ? '输入你的回答…' : '登录后开始对话'}
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white resize-none text-[15px]"
                   rows={1}
