@@ -133,7 +133,7 @@ function appendDecisionCalibrationMarkdown(
     if (actionItems.length > 0) {
       sb.push('\n### 行动建议清单\n\n');
       for (const it of actionItems) {
-        sb.push('- [ ] ', it, '\n');
+        sb.push('- ', it, '\n');
       }
     }
   }

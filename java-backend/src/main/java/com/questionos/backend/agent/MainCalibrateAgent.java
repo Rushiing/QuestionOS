@@ -355,14 +355,14 @@ public class MainCalibrateAgent implements AgentExecutor {
             if (!actionItems.isEmpty()) {
                 sb.append("\n### 行动建议清单\n\n");
                 for (String it : actionItems) {
-                    sb.append("- [ ] ").append(it).append("\n");
+                    sb.append("- ").append(it).append("\n");
                 }
             }
         }
     }
 
     /**
-     * 从 suggested_direction 拆成可勾选条目（多行 / 分号 / 单段兜底），供前端 Markdown 任务列表展示。
+     * 从 suggested_direction 拆成条目（多行 / 分号 / 单段兜底），供前端 Markdown 无序列表展示。
      */
     private static List<String> splitActionItems(String suggested) {
         List<String> out = new ArrayList<>();

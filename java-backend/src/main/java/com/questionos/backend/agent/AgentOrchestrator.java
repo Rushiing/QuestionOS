@@ -20,6 +20,9 @@ import java.util.Optional;
  */
 @Service
 public class AgentOrchestrator {
+    /** 首轮用户议题写入 prompt 的上限，避免撑爆上下文 */
+    private static final int SANDBOX_CORE_TOPIC_MAX_CHARS = 1200;
+
     private enum SandboxSlot {
         THIRD_PARTY,
         AUDITOR,
@@ -94,7 +97,7 @@ public class AgentOrchestrator {
                         aid,
                         aid,
                         null,
-                        latestUser,
+                        buildThirdPartyUserMessage(prior, latestUser),
                         agent,
                         aid + " 发言结束。"
                 );
@@ -255,20 +258,63 @@ public class AgentOrchestrator {
         return sb.toString().trim();
     }
 
-    /** 对齐 openclaw_client.run_sandtable_stream 中攻击者 prompt 结构 */
-    private String buildAttackerUserMessage(List<ConversationMessage> prior, String latestUser) {
-        String ctx = formatPriorAgents(prior);
-        if (ctx.isEmpty()) {
-            return latestUser;
+    /** 会话中第一条用户消息 = 沙盘要钉死的「核心议题」（后续轮次仍带回，避免攻击飘成套话） */
+    private static String firstUserIssue(List<ConversationMessage> prior, String latestUser) {
+        for (ConversationMessage m : prior) {
+            if (m.role() != MessageRole.USER || m.content() == null) {
+                continue;
+            }
+            String t = m.content().trim();
+            if (!t.isEmpty()) {
+                return t;
+            }
         }
-        return "前面其他参与者的观点：\n" + ctx + "\n\n---\n\n现在轮到你了。基于你的立场，对用户最新输入发起攻击：\n" + latestUser;
+        return latestUser == null ? "" : latestUser.trim();
+    }
+
+    private static String truncateCoreTopic(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String t = raw.trim();
+        if (t.length() <= SANDBOX_CORE_TOPIC_MAX_CHARS) {
+            return t;
+        }
+        return t.substring(0, SANDBOX_CORE_TOPIC_MAX_CHARS) + "\n…（议题过长已截断）";
+    }
+
+    /**
+     * 内置/外聘共用：把「核心议题 + 本轮用户话 + 已发言观点」拼成一块，再由各角色指令收尾。
+     */
+    private String formatSandboxContextBlock(List<ConversationMessage> prior, String latestUser) {
+        String core = truncateCoreTopic(firstUserIssue(prior, latestUser));
+        String latest = latestUser == null ? "" : latestUser.trim();
+        String agents = formatPriorAgents(prior);
+        return "## 用户核心议题（整场沙盘须围绕此议题，禁止空泛套话）\n\n"
+                + (core.isEmpty() ? "（用户尚未说明具体议题）" : core)
+                + "\n\n## 本轮用户最新发言\n\n"
+                + (latest.isEmpty() ? "（无）" : latest)
+                + "\n\n## 前面其他参与者的观点\n\n"
+                + (agents.isEmpty() ? "（暂无）" : agents)
+                + "\n";
+    }
+
+    private String buildAttackerUserMessage(List<ConversationMessage> prior, String latestUser) {
+        return formatSandboxContextBlock(prior, latestUser)
+                + "\n---\n\n现在轮到你了。从**你的角色立场**出发，**直指上文「用户核心议题」中的具体目标、约束、利益相关方、时间或内在矛盾**发起挑战或追问；"
+                + "可引用「前面其他参与者」的论点与之交锋。"
+                + "禁止只输出与用户议题无关的通用管理话术。\n";
     }
 
     private String buildIntegratorUserMessage(List<ConversationMessage> prior, String latestUser) {
-        String ctx = formatPriorAgents(prior);
-        return "用户最新输入：" + latestUser + "\n\n各方观点（按时间顺序）：\n\n"
-                + (ctx.isEmpty() ? "（暂无前置观点）" : ctx)
-                + "\n\n---\n作为首席整合官，请收束这场博弈，输出你的决策沙盘报告。";
+        return formatSandboxContextBlock(prior, latestUser)
+                + "\n---\n作为首席整合官，请收束这场博弈：博弈复盘与决策沙盘表格中的「关键问题」必须**显式回扣上述用户核心议题**，"
+                + "输出你的决策沙盘报告。\n";
+    }
+
+    private String buildThirdPartyUserMessage(List<ConversationMessage> prior, String latestUser) {
+        return formatSandboxContextBlock(prior, latestUser)
+                + "\n---\n请结合以上语境（尤其用户核心议题），从你的能力出发补充、质疑或给出一记「外视角」追问。\n";
     }
 
     public Map<String, Object> capabilities() {

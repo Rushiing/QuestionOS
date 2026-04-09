@@ -275,7 +275,7 @@ export default function HomePage() {
                 选择模式
               </h2>
               <p className="text-gray-500 text-xs sm:text-sm max-w-lg mx-auto">
-                点选模式后填写问题；可选上传背景文件（纯文本抽取）。进入对话前请登录。
+                点选模式后填写问题；背景资料可选，仅文本文件上传。进入对话前请登录。
               </p>
             </header>
 
@@ -347,7 +347,7 @@ export default function HomePage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">背景资料（可选）</label>
                 <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                  仅支持上传文件，抽取<strong className="font-medium text-gray-600">纯文本</strong>后附在首轮对话：.txt / .md / .doc / .docx，单文件小于 2MB。需登录后上传。
+                  仅支持文本文件上传，支持格式：.txt / .md / .doc / .docx，单文件小于 2MB。
                 </p>
                 <input
                   ref={fileInputRef}
@@ -576,13 +576,13 @@ export default function HomePage() {
               {
                 n: '2',
                 t: '描述问题',
-                d: '用自然语言描述困境；可上传 .txt / .md / .doc / .docx 作为背景（抽取纯文本）',
-                hint: ['✍️ 支持中英文', '📎 首轮可附带背景文件'],
+                d: '用自然语言描述困境。背景资料可选：仅支持文本文件上传，支持格式：.txt / .md / .doc / .docx，单文件小于 2MB。',
+                hint: ['✍️ 支持中英文', '📎 文本类背景见首页说明'],
               },
               {
                 n: '3',
                 t: '获得洞察',
-                d: 'AI 通过对话帮你理清思路；校准模式含可勾选行动建议清单',
+                d: 'AI 通过对话帮你理清思路；校准模式可输出行动建议清单',
                 hint: ['💡 结构化输出', '📋 行动建议清单'],
               },
             ].map((step) => (
