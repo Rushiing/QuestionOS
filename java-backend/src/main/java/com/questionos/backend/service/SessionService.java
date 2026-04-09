@@ -9,6 +9,8 @@ import com.questionos.backend.domain.ConversationSession;
 import com.questionos.backend.domain.MessageRole;
 import com.questionos.backend.domain.SessionMode;
 import com.questionos.backend.domain.StreamEvent;
+import com.questionos.backend.persistence.SessionSnapshotPersistence;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.codec.ServerSentEvent;
@@ -37,6 +39,7 @@ public class SessionService {
     private final AgentOrchestrator orchestrator;
     private final SessionTitleService sessionTitleService;
     private final ObjectMapper objectMapper;
+    private final SessionSnapshotPersistence sessionPersistence;
 
     @Value("${questionos.session.titleFromLlm:false}")
     private boolean sessionTitleFromLlm;
@@ -51,11 +54,44 @@ public class SessionService {
     public SessionService(
             AgentOrchestrator orchestrator,
             SessionTitleService sessionTitleService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            SessionSnapshotPersistence sessionPersistence
     ) {
         this.orchestrator = orchestrator;
         this.sessionTitleService = sessionTitleService;
         this.objectMapper = objectMapper;
+        this.sessionPersistence = sessionPersistence;
+    }
+
+    @PostConstruct
+    void hydrateSessionsFromPersistence() {
+        if (!sessionPersistence.isEnabled()) {
+            return;
+        }
+        int n = 0;
+        for (SessionSnapshotPersistence.LoadedSession ls : sessionPersistence.loadAll()) {
+            String id = ls.session().getSessionId();
+            if (sessions.containsKey(id)) {
+                continue;
+            }
+            sessions.put(id, ls.session());
+            messages.put(id, new ArrayList<>(ls.messages()));
+            eventStore.put(id, new ArrayList<>());
+            sinks.put(id, Sinks.many().multicast().directBestEffort());
+            n++;
+        }
+        if (n > 0) {
+            log.info("restored {} conversation session(s) from persistence store", n);
+        }
+    }
+
+    private void persistSnapshot(String sessionId) {
+        ConversationSession s = sessions.get(sessionId);
+        if (s == null || !sessionPersistence.isEnabled()) {
+            return;
+        }
+        List<ConversationMessage> list = messages.get(sessionId);
+        sessionPersistence.save(s, list != null ? list : List.of());
     }
 
     public ConversationSession createSession(String ownerUserId, SessionMode mode, String question) {
@@ -75,12 +111,14 @@ public class SessionService {
                 ConversationSession s = sessions.get(sessionId);
                 if (s != null) {
                     s.setDisplayTitle(title);
+                    persistSnapshot(sessionId);
                 }
             });
         }
 
         // 首条用户消息由 POST /messages 写入，避免与前端「创建会话后再发送」重复
         publishEvent(sessionId, 1, "session_created", "{\"status\":\"created\"}");
+        persistSnapshot(sessionId);
         return session;
     }
 
@@ -162,6 +200,9 @@ public class SessionService {
         messages.remove(sessionId);
         eventStore.remove(sessionId);
         sinks.remove(sessionId);
+        if (existed) {
+            sessionPersistence.delete(sessionId);
+        }
         return existed;
     }
 
@@ -205,6 +246,7 @@ public class SessionService {
         String messageId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         ConversationMessage message = new ConversationMessage(messageId, session.getSessionId(), turnId, role, content, now, agentSpeakerId);
         messages.get(session.getSessionId()).add(message);
+        persistSnapshot(session.getSessionId());
         return message;
     }
 

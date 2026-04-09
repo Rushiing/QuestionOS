@@ -1,10 +1,12 @@
 package com.questionos.backend.service;
 
 import com.questionos.backend.api.dto.AuthDtos;
+import com.questionos.backend.persistence.UserAccountJdbcRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -30,7 +33,7 @@ public class AuthService {
      * 旧版 qos_ 随机 token 的内存会话（仅兼容已登录用户）；新登录一律签发 JWT。
      */
     private final Map<String, AuthDtos.AuthUser> sessionStore = new ConcurrentHashMap<>();
-    private final Map<String, AuthDtos.AuthUser> googleUsers = new ConcurrentHashMap<>();
+    private final ObjectProvider<UserAccountJdbcRepository> userAccountRepository;
     private final String jwtSecretRaw;
 
     private static final AuthDtos.AuthUser SANDBOX_USER = new AuthDtos.AuthUser(
@@ -45,12 +48,14 @@ public class AuthService {
     public AuthService(
             @Value("${questionos.auth.google.client-id:}") String googleClientId,
             @Value("${questionos.auth.sandbox-token:}") String sandboxToken,
-            @Value("${questionos.auth.jwt.secret:}") String jwtSecret
+            @Value("${questionos.auth.jwt.secret:}") String jwtSecret,
+            ObjectProvider<UserAccountJdbcRepository> userAccountRepository
     ) {
         this.webClient = WebClient.builder().build();
         this.googleClientId = googleClientId;
         this.sandboxToken = sandboxToken == null ? "" : sandboxToken.trim();
         this.jwtSecretRaw = jwtSecret == null ? "" : jwtSecret.trim();
+        this.userAccountRepository = userAccountRepository;
     }
 
     public Mono<AuthDtos.AuthSuccessResponse> loginWithGoogle(String idToken) {
@@ -76,7 +81,7 @@ public class AuthService {
                         name = email.contains("@") ? email.substring(0, email.indexOf('@')) : "Google User";
                     }
                     AuthDtos.AuthUser user = new AuthDtos.AuthUser(userId, email, name, picture);
-                    googleUsers.put(userId, user);
+                    userAccountRepository.ifAvailable(repo -> repo.upsertGoogleUser(user));
 
                     String accessToken = issueAccessToken(user);
                     return new AuthDtos.AuthSuccessResponse(accessToken, user);
@@ -130,12 +135,20 @@ public class AuthService {
             if (sub == null || sub.isBlank()) {
                 return null;
             }
-            return new AuthDtos.AuthUser(
+            AuthDtos.AuthUser fromJwt = new AuthDtos.AuthUser(
                     sub,
                     str(claims.get("email")),
                     str(claims.get("name")),
                     str(claims.get("avatar"))
             );
+            UserAccountJdbcRepository repo = userAccountRepository.getIfAvailable();
+            if (repo != null) {
+                Optional<AuthDtos.AuthUser> fromDb = repo.findByUserId(sub);
+                if (fromDb.isPresent()) {
+                    return fromDb.get();
+                }
+            }
+            return fromJwt;
         } catch (JwtException | IllegalArgumentException e) {
             return null;
         }

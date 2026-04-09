@@ -32,6 +32,43 @@ public class ConversationSession {
         this.sandboxSpeakerRound = new AtomicInteger(0);
     }
 
+    /**
+     * 从磁盘快照恢复；turnSeq / sandboxSpeakerRound 为持久化时的计数器当前值（与 {@link #nextTurn()} 语义一致）。
+     */
+    public static ConversationSession restore(
+            String sessionId,
+            String ownerUserId,
+            SessionMode mode,
+            SessionStatus status,
+            Instant createdAt,
+            Instant lastActivityAt,
+            Instant expiresAt,
+            String displayTitle,
+            long turnSeqSnapshot,
+            int sandboxSpeakerRoundSnapshot,
+            long restoredMessageCount
+    ) {
+        ConversationSession s = new ConversationSession(sessionId, ownerUserId, mode, createdAt, expiresAt);
+        s.status = status;
+        s.lastActivityAt = lastActivityAt;
+        s.expiresAt = expiresAt;
+        s.displayTitle = displayTitle;
+        s.turnSeq.set(turnSeqSnapshot);
+        s.sandboxSpeakerRound.set(sandboxSpeakerRoundSnapshot);
+        s.messageCount.set(Math.max(0, restoredMessageCount));
+        return s;
+    }
+
+    /** 持久化用：当前已分配的最大轮次序号（下次 {@link #nextTurn()} 在其基础上 +1）。 */
+    public long currentTurnSeq() {
+        return turnSeq.get();
+    }
+
+    /** 持久化用：沙盘轮转计数当前值。 */
+    public int currentSandboxSpeakerRound() {
+        return sandboxSpeakerRound.get();
+    }
+
     public int nextSandboxSpeakerRound() {
         return sandboxSpeakerRound.getAndIncrement();
     }

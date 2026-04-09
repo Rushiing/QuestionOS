@@ -1,0 +1,21 @@
+# 激活：SPRING_PROFILES_ACTIVE=postgres（根目录 Dockerfile.railway-backend 已默认）
+# Railway：将 Postgres 服务与本后端「Connect」后，会注入 PGHOST / PGPORT / PGUSER / PGPASSWORD / PGDATABASE
+# 若连接报错，可尝试在 Variables 增加 PGSSLMODE=disable（少数内网场景）
+spring:
+  datasource:
+    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}?sslmode=${PGSSLMODE:require}
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
+    hikari:
+      maximum-pool-size: 8
+      connection-timeout: 30000
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# 也可用单变量覆盖整串 JDBC（优先级高于上面的 url）：SPRING_DATASOURCE_URL=jdbc:postgresql://...
+
+questionos:
+  session:
+    persistence:
+      backend: jdbc

@@ -1,4 +1,9 @@
 # Railway/容器：必须监听 0.0.0.0 与 $PORT，否则边缘会 502「Application failed to respond」
+# 未设置 spring.profiles.active 时使用 local（仅文件快照，不连库）。Railway 见 Dockerfile 或变量 SPRING_PROFILES_ACTIVE=postgres。
+spring:
+  profiles:
+    default: local
+
 server:
   port: ${PORT:8080}
   address: 0.0.0.0
@@ -31,9 +36,13 @@ questionos:
     maxMessagesPerMinute: 30
     maxSessionsPerToken: 20
 
-  # 会话列表标题：默认不用 LLM（避免与首轮校准并行多打一次 glm，保对话首包）
+  # 会话列表标题：默认不用 LLM（避免与首轮校准多打一次 glm，保对话首包）
   session:
     titleFromLlm: ${QUESTIONOS_SESSION_TITLE_FROM_LLM:false}
+    # 持久化：profile=local 时 backend=file（JSON 目录见下）；profile=postgres 时 backend=jdbc（见 application-postgres.yml）
+    persistence:
+      enabled: ${QUESTIONOS_SESSION_PERSISTENCE_ENABLED:true}
+      directory: ${QUESTIONOS_SESSION_STORE_DIR:}
 
   # 本地真实调用 LLM（用于：当未接入任何三方 agents 时，仍能让内置四角色正常沙盘推演）
   # 你可以把 endpoint 配成 OpenAI 或 OpenAI-compatible 的聊天补全接口：

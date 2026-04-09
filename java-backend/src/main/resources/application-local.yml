@@ -1,0 +1,5 @@
+# 默认 profile：不连数据库，会话 JSON 快照写入 data/questionos-sessions（见 JsonFileSessionPersistence）
+questionos:
+  session:
+    persistence:
+      backend: file

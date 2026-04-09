@@ -10,6 +10,9 @@ dist/
 # Java build
 **/target/
 
+# Java 后端本地会话快照（questionos.session.persistence）
+java-backend/data/
+
 # Node / Next build
 **/node_modules/
 **/.next/

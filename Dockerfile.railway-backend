@@ -14,4 +14,6 @@ WORKDIR /app
 COPY --from=builder /app/target/*.jar /app/app.jar
 
 EXPOSE 8080
+# 使用 PostgreSQL 持久化会话；本地无库时请 unset 或改为 local
+ENV SPRING_PROFILES_ACTIVE=postgres
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
