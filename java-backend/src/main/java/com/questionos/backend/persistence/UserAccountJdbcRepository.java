@@ -1,7 +1,7 @@
 package com.questionos.backend.persistence;
 
 import com.questionos.backend.api.dto.AuthDtos;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -10,10 +10,11 @@ import javax.sql.DataSource;
 import java.util.Optional;
 
 /**
- * 用户账号落库（当前：Google 登录 upsert）。仅在有 DataSource 时注册（与 postgres profile 一致）。
+ * 用户账号落库（当前：Google 登录 upsert）。
+ * 使用 {@code @Profile("postgres")} 而非 {@code @ConditionalOnBean(DataSource)}，避免 WebFlux 下条件早于 DataSource 注册导致本 Bean 被跳过、登录不写库。
  */
 @Repository
-@ConditionalOnBean(DataSource.class)
+@Profile("postgres")
 public class UserAccountJdbcRepository {
     private final JdbcTemplate jdbc;
 
