@@ -1,19 +1,18 @@
 # Railway/容器：必须监听 0.0.0.0 与 $PORT，否则边缘会 502「Application failed to respond」
 # 未设置 spring.profiles.active 时使用 local（仅文件快照，不连库）。Railway 见 Dockerfile 或变量 SPRING_PROFILES_ACTIVE=postgres。
+# 注意：同一文件只能有一个顶级 spring:（SnakeYAML 2 禁止重复键，否则启动即 DuplicateKeyException）
 spring:
   profiles:
     default: local
-
-server:
-  port: ${PORT:8080}
-  address: 0.0.0.0
-
-spring:
   application:
     name: questionos-java-backend
   # multipart / 背景文档解析（≤2MB）需要抬高内存缓冲上限
   codec:
     max-in-memory-size: 3MB
+
+server:
+  port: ${PORT:8080}
+  address: 0.0.0.0
 
 management:
   endpoints:
