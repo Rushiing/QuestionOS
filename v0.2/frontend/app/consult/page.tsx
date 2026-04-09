@@ -12,6 +12,7 @@ import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/
 import { CONSULT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
 import { handleEnterToSubmit } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
+import { SANDBOX_TURN_MAX_WAIT_MS } from '../../lib/runtime-config';
 
 interface Agent {
   id: string;
@@ -621,7 +622,7 @@ export default function ConsultPage() {
           content: '响应超时，请点击发送重试。',
         }]);
       })();
-    }, 30000);
+    }, SANDBOX_TURN_MAX_WAIT_MS);
 
     try {
       const idemKey = `idem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

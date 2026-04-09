@@ -2,6 +2,13 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost
 export const API_VERSION = process.env.NEXT_PUBLIC_API_VERSION || '1.1';
 export const SANDBOX_FALLBACK_TOKEN = process.env.NEXT_PUBLIC_SANDBOX_TOKEN || 'sk-sandbox-dev';
 
+/** 沙盘页单轮从发送到等到 turn_done 的上限，需 ≥ 后端 LLM 超时（默认 240s） */
+const sandboxTurnMaxWaitParsed = Number(process.env.NEXT_PUBLIC_SANDBOX_TURN_MAX_WAIT_MS);
+export const SANDBOX_TURN_MAX_WAIT_MS =
+  Number.isFinite(sandboxTurnMaxWaitParsed) && sandboxTurnMaxWaitParsed >= 60_000
+    ? sandboxTurnMaxWaitParsed
+    : 240_000;
+
 function apiBaseNormalized(): string {
   return API_BASE_URL.replace(/\/$/, '');
 }
