@@ -206,13 +206,14 @@ public class OpenClawInvokeService {
 
         Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint(), false);
 
+        Duration agentTimeout = Duration.ofSeconds(Math.max(25, defaultLlmTimeoutSeconds));
         return executeChatCompletions(
                 url,
                 body,
                 apiKey,
                 model,
                 "sandbox:" + agent.agentId(),
-                Duration.ofSeconds(25));
+                agentTimeout);
     }
 
     /**

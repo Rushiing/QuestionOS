@@ -179,8 +179,8 @@ public class AgentOrchestrator {
     ) {
         return Flux.just(new AgentReplyChunk("agent_start", speakerId + "|" + displayName))
                 .concatWith(
+                        // 不设外层短超时：OpenClawInvokeService 已按 questionos.llm.timeoutSeconds 约束整段调用
                         invokeService.invokeOpenClaw(agent, systemPrompt, userMessage)
-                                .timeout(Duration.ofSeconds(25))
                                 .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
                                 .onErrorResume(e -> Flux.just(
                                         new AgentReplyChunk("agent_error", "调用失败: " + e.getMessage()),
@@ -201,7 +201,6 @@ public class AgentOrchestrator {
         return Flux.just(new AgentReplyChunk("agent_start", speakerId + "|" + displayName))
                 .concatWith(
                         invokeService.invokeDefaultLlm(systemPrompt, userMessage)
-                                .timeout(Duration.ofSeconds(25))
                                 .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
                                 .onErrorResume(e -> Flux.just(
                                         new AgentReplyChunk("agent_error", "调用失败: " + e.getMessage()),
