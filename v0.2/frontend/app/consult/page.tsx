@@ -158,6 +158,8 @@ export default function ConsultPage() {
   const [starterComposerVisible, setStarterComposerVisible] = useState(false);
   const lastSeqRef = useRef<number>(0);
   const hasStreamActivityRef = useRef<boolean>(false);
+  /** 超时插入的「本轮较慢」气泡 id；若随后收到 turn_done 则移除，避免与完整回复并存 */
+  const slowRoundWarningIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const instanceHoverScrollRef = useRef<HTMLDivElement>(null);
@@ -562,6 +564,11 @@ export default function ConsultPage() {
           // 后端在 done 之后还会发 turn_done；若此处就停止，会漏掉 turn_done，下一轮 Last-Event-ID 重放会先收到旧的 turn_done 并误结束。
           return false;
         } else if (eventType === 'turn_done') {
+          const warnId = slowRoundWarningIdRef.current;
+          if (warnId) {
+            slowRoundWarningIdRef.current = null;
+            setMessages((prev) => prev.filter((m) => m.id !== warnId));
+          }
           isDone = true;
           return true;
         }
@@ -579,6 +586,7 @@ export default function ConsultPage() {
   const runTurn = async (sid: string, userText: string) => {
     setIsAgentResponding(true);
     hasStreamActivityRef.current = false;
+    slowRoundWarningIdRef.current = null;
     setDebugLogs((prev) => [...prev, `--- turn start ${new Date().toLocaleTimeString('zh-CN')} ---`]);
     let timedOut = false;
     const timeout = setTimeout(() => {
@@ -588,8 +596,10 @@ export default function ConsultPage() {
         setMessages(prev => prev.map(m =>
           m.is_streaming ? { ...m, is_streaming: false } : m
         ));
+        const warnId = `${Date.now()}-slow`;
+        slowRoundWarningIdRef.current = warnId;
         setMessages(prev => [...prev, {
-          id: `${Date.now()}-slow`,
+          id: warnId,
           role: 'system',
           content: '本轮较慢，已停止等待；可继续追问。',
         }]);
