@@ -275,7 +275,7 @@ export default function HomePage() {
                 选择模式
               </h2>
               <p className="text-gray-500 text-xs sm:text-sm max-w-lg mx-auto">
-                点选模式后填写问题；背景资料可选，仅文本文件上传。进入对话前请登录。
+                点选模式后填写问题；可选上传文本背景资料。进入对话前请登录。
               </p>
             </header>
 
@@ -576,8 +576,8 @@ export default function HomePage() {
               {
                 n: '2',
                 t: '描述问题',
-                d: '用自然语言描述困境。背景资料可选：仅支持文本文件上传，支持格式：.txt / .md / .doc / .docx，单文件小于 2MB。',
-                hint: ['✍️ 支持中英文', '📎 文本类背景见首页说明'],
+                d: '使用自然语言描述困境。支持文本背景资料上传。',
+                hint: ['✍️ 支持中英文', '📎 背景与问题一体提交'],
               },
               {
                 n: '3',
