@@ -52,23 +52,15 @@ public class AgentOrchestrator {
             SessionMode mode,
             List<ConversationMessage> history,
             int sandboxRoundIndex,
-            String sandboxDeliberationScene,
-            boolean emitSandboxRouteCard
+            String sandboxDeliberationScene
     ) {
         if (mode == SessionMode.CALIBRATION) {
             return Flux.just(new AgentReplyChunk("agent_start", "main-calibrate|主校准 Agent"))
                     .concatWith(mainAgent.replyWithHistory(sessionId, turnId, input, history))
                     .concatWithValues(new AgentReplyChunk("done", "本轮结束"));
         }
-        Flux<AgentReplyChunk> main = sandboxSingleReply(history, sandboxRoundIndex, sandboxDeliberationScene)
+        return sandboxSingleReply(history, sandboxRoundIndex, sandboxDeliberationScene)
                 .concatWithValues(new AgentReplyChunk("done", "本轮结束"));
-        if (!emitSandboxRouteCard) {
-            return main;
-        }
-        SandboxDeliberationScene sc = SandboxDeliberationScene.parseStored(sandboxDeliberationScene);
-        boolean thirdParty = registryService.firstAvailableAgent().isPresent();
-        String routeMd = SandboxAgoraRouteCard.markdown(sc, thirdParty);
-        return Flux.just(new AgentReplyChunk("sandbox_route", routeMd)).concatWith(main);
     }
 
     private Flux<AgentReplyChunk> sandboxSingleReply(
@@ -310,6 +302,7 @@ public class AgentOrchestrator {
             case "risk_officer" -> "风险预测官";
             case "value_judge" -> "价值裁判";
             case "integrator" -> "首席整合官";
+            case "sandbox-route" -> "审议路由";
             case "third-party-adapter" -> "外聘 Agent";
             default -> registryService.find(id).map(AgentRegistryService.RegisteredAgent::agentId).orElse(id);
         };
@@ -318,7 +311,12 @@ public class AgentOrchestrator {
     private String formatPriorAgents(List<ConversationMessage> prior) {
         StringBuilder sb = new StringBuilder();
         for (ConversationMessage m : prior) {
-            if (m.role() != MessageRole.AGENT || m.content() == null || m.content().isBlank()) continue;
+            if (m.role() != MessageRole.AGENT || m.content() == null || m.content().isBlank()) {
+                continue;
+            }
+            if ("sandbox-route".equals(m.agentSpeakerId())) {
+                continue;
+            }
             String label = displayNameForSpeakerId(m.agentSpeakerId());
             sb.append("【").append(label).append("】：").append(m.content().trim()).append("\n\n");
         }

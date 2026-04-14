@@ -622,13 +622,16 @@ export default function ConsultPage() {
       (async () => {
         try {
           const msgList = await sandboxClient.listMessages(sid);
-          const latestAgent = [...msgList].reverse().find(m => m.role === 'AGENT' && m.content?.trim());
+          const latestAgent = [...msgList].reverse().find(
+            (m) => m.role === 'AGENT' && m.content?.trim() && m.agentSpeakerId !== 'sandbox-route',
+          );
           if (latestAgent) {
-            const { name, avatar } = agentMeta('main-calibrate');
+            const aid = (latestAgent.agentSpeakerId || 'auditor').trim() || 'auditor';
+            const { name, avatar } = agentMeta(aid);
             setMessages(prev => [...prev, {
               id: `${Date.now()}-fallback`,
               role: 'agent',
-              agent_id: 'main-calibrate',
+              agent_id: aid,
               agent_name: name,
               agent_avatar: avatar,
               content: latestAgent.content,

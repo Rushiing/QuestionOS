@@ -14,6 +14,7 @@ interface Session {
   messages?: Array<{
     role: string;
     content: string;
+    agentSpeakerId?: string | null;
   }>;
 }
 
@@ -93,6 +94,7 @@ export default function HistoryPage() {
             messages: (messages || []).map((m: any) => ({
               role: String(m.role || '').toLowerCase(),
               content: m.content,
+              agentSpeakerId: m.agentSpeakerId ?? null,
             })),
           } : s
         ));
@@ -200,7 +202,11 @@ export default function HistoryPage() {
                             className={`${msg.role === 'user' ? 'text-slate-700' : 'text-slate-500'}`}
                           >
                             <span className="font-medium">
-                              {msg.role === 'user' ? '👤 ' : '🤖 '}
+                              {msg.role === 'user'
+                                ? '👤 '
+                                : msg.agentSpeakerId === 'sandbox-route'
+                                  ? '🧭 '
+                                  : '🤖 '}
                             </span>
                             <span className="line-clamp-2">{msg.content}</span>
                           </div>

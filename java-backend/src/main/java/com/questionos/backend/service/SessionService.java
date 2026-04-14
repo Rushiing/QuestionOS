@@ -4,7 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.questionos.backend.agent.AgentOrchestrator;
 import com.questionos.backend.agent.AgentReplyChunk;
+import com.questionos.backend.agent.SandboxAgoraRouteCard;
+import com.questionos.backend.agent.SandboxDeliberationScene;
 import com.questionos.backend.agent.SandboxSceneClassifier;
+import com.questionos.backend.integrations.AgentRegistryService;
 import com.questionos.backend.domain.ConversationMessage;
 import com.questionos.backend.domain.ConversationSession;
 import com.questionos.backend.domain.MessageRole;
@@ -42,6 +45,7 @@ public class SessionService {
     private final ObjectMapper objectMapper;
     private final SessionSnapshotPersistence sessionPersistence;
     private final SandboxSceneClassifier sandboxSceneClassifier;
+    private final AgentRegistryService agentRegistryService;
 
     @Value("${questionos.session.titleFromLlm:false}")
     private boolean sessionTitleFromLlm;
@@ -58,13 +62,15 @@ public class SessionService {
             SessionTitleService sessionTitleService,
             ObjectMapper objectMapper,
             SessionSnapshotPersistence sessionPersistence,
-            SandboxSceneClassifier sandboxSceneClassifier
+            SandboxSceneClassifier sandboxSceneClassifier,
+            AgentRegistryService agentRegistryService
     ) {
         this.orchestrator = orchestrator;
         this.sessionTitleService = sessionTitleService;
         this.objectMapper = objectMapper;
         this.sessionPersistence = sessionPersistence;
         this.sandboxSceneClassifier = sandboxSceneClassifier;
+        this.agentRegistryService = agentRegistryService;
     }
 
     @PostConstruct
@@ -171,29 +177,38 @@ public class SessionService {
                 persistSnapshot(sessionId);
             }
         }
+        boolean emitSandboxRoute =
+                session.getMode() == SessionMode.SANDBOX && countUserMessages(history) == 1;
+        if (emitSandboxRoute) {
+            SandboxDeliberationScene sc = SandboxDeliberationScene.parseStored(session.getSandboxDeliberationScene());
+            boolean thirdParty = agentRegistryService.firstAvailableAgent().isPresent();
+            String routeMd = SandboxAgoraRouteCard.markdown(sc, thirdParty);
+            appendMessage(session, MessageRole.AGENT, routeMd, turnId, "sandbox-route");
+            publishEvent(sessionId, turnId, "sandbox_route", jsonPayloadForChunkContent(routeMd));
+            persistSnapshot(sessionId);
+        }
+        List<ConversationMessage> pipelineHistory = filterOutSandboxRouteMessages(messages.get(sessionId));
         log.info(
-                "session agent pipeline start sessionId={} turnId={} mode={} historySize={} userChars={} sandboxScene={}",
+                "session agent pipeline start sessionId={} turnId={} mode={} historySize={} pipelineHistorySize={} userChars={} sandboxScene={}",
                 sessionId,
                 turnId,
                 session.getMode(),
                 history.size(),
+                pipelineHistory.size(),
                 content == null ? 0 : content.length(),
                 session.getMode() == SessionMode.SANDBOX ? String.valueOf(session.getSandboxDeliberationScene()) : "-");
         AtomicReference<StringBuilder> agentReply = new AtomicReference<>(new StringBuilder());
         AtomicReference<String> activeSpeakerId = new AtomicReference<>();
         String sceneForPipeline =
                 session.getMode() == SessionMode.SANDBOX ? session.getSandboxDeliberationScene() : null;
-        boolean emitSandboxRoute =
-                session.getMode() == SessionMode.SANDBOX && countUserMessages(history) == 1;
         orchestrator.runPipeline(
                         sessionId,
                         turnId,
                         content,
                         session.getMode(),
-                        history,
+                        pipelineHistory,
                         sandboxRound,
-                        sceneForPipeline,
-                        emitSandboxRoute)
+                        sceneForPipeline)
                 .doOnNext(chunk -> {
                     if ("agent_start".equals(chunk.eventType())) {
                         String c = chunk.content();
@@ -204,7 +219,6 @@ public class SessionService {
                         agentReply.get().append(chunk.content());
                     }
                     // agent_delta：仅实时 UI，不入库（最终仍以 agent_chunk 为准）
-                    // sandbox_route：首轮审议室说明，仅 SSE 展示，不入库
                     publishEvent(sessionId, turnId, chunk.eventType(), jsonPayloadForChunkContent(chunk.content()));
                 })
                 .doOnComplete(() -> {
@@ -307,6 +321,14 @@ public class SessionService {
             return 0;
         }
         return history.stream().filter(m -> m.role() == MessageRole.USER).count();
+    }
+
+    /** 传给 LLM 的历史不含「审议路由」占位消息，避免污染攻防上下文。 */
+    private static List<ConversationMessage> filterOutSandboxRouteMessages(List<ConversationMessage> src) {
+        if (src == null || src.isEmpty()) {
+            return List.of();
+        }
+        return src.stream().filter(m -> !"sandbox-route".equals(m.agentSpeakerId())).toList();
     }
 
     /** 取时间序上首条用户文本，供沙盘场景分类（与核心议题钉定逻辑一致）。 */
