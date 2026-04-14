@@ -176,8 +176,11 @@ public class SessionService {
             String scene = session.getSandboxDeliberationScene();
             if (scene == null || scene.isBlank()) {
                 String issue = classifyIssueText(history);
-                classificationSnapshot = sandboxSceneClassifier.classifyDetailed(issue);
                 boolean hadPriorClassify = sessionAlreadyHasSandboxClassify(messages.get(sessionId));
+                classificationSnapshot = hadPriorClassify
+                        // 步骤①已完成补充后，进入步骤②前禁止再落到 GENERAL。
+                        ? sandboxSceneClassifier.classifyDetailedNoGeneral(issue)
+                        : sandboxSceneClassifier.classifyDetailed(issue);
                 boolean lowConfidence = "LOW".equalsIgnoreCase(classificationSnapshot.confidence()) || classificationSnapshot.forcedSecondary();
                 needClarificationFirst = lowConfidence && !hadPriorClassify;
                 if (!needClarificationFirst) {

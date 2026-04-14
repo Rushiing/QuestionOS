@@ -68,6 +68,27 @@ public class SandboxSceneClassifier {
     }
 
     /**
+     * 用于「步骤②前」的强制入室：返回结果保证不是 GENERAL。
+     */
+    public SandboxClassificationResult classifyDetailedNoGeneral(String issuePlainText) {
+        SandboxClassificationResult first = classifyDetailed(issuePlainText);
+        if (first.scene() != SandboxDeliberationScene.GENERAL) {
+            return first;
+        }
+        String trimmed = issuePlainText == null ? "" : issuePlainText.trim();
+        String snippet = trimmed.length() <= ISSUE_MAX ? trimmed : trimmed.substring(0, ISSUE_MAX) + "\n…（已截断）";
+        SandboxDeliberationScene forced = forceRoom(snippet, "{\"scene\":\"GENERAL\",\"confidence\":\"LOW\"}");
+        if (forced != null && forced != SandboxDeliberationScene.GENERAL) {
+            return new SandboxClassificationResult(forced, first.normalizedIssue(), "LOW", true);
+        }
+        SandboxDeliberationScene fb = keywordFallback(trimmed);
+        if (fb == SandboxDeliberationScene.GENERAL) {
+            fb = SandboxDeliberationScene.BUSINESS;
+        }
+        return new SandboxClassificationResult(fb, first.normalizedIssue(), "LOW", true);
+    }
+
+    /**
      * 完整分诊结果（步骤 ① 卡片）：含归一化议题句、信心与是否触发二次强制入室。
      */
     public SandboxClassificationResult classifyDetailed(String issuePlainText) {
@@ -231,7 +252,8 @@ public class SandboxSceneClassifier {
         bump(score, SandboxDeliberationScene.ENGINEERING, x,
                 "代码", "架构", "api", "数据库", "微服务", "部署", "性能", "重构", "bug", "技术债", "测试", "framework");
         bump(score, SandboxDeliberationScene.BUSINESS, x,
-                "市场", "定价", "竞争", "融资", "增长", "商业模式", "客户", "营收", "创业", "战略", "投资", "竞品", "pmf");
+                "市场", "定价", "竞争", "融资", "增长", "商业模式", "客户", "营收", "创业", "战略", "投资", "竞品", "pmf",
+                "产品", "用户反馈", "口碑", "留存", "转化", "复购", "上线");
         bump(score, SandboxDeliberationScene.LIFE_CROSSROADS, x,
                 "要不要", "辞职", "转行", "人生", "意义", "方向", "迷茫", "后悔", "离开", "留下", "值不值得", "中年");
         bump(score, SandboxDeliberationScene.RELATIONSHIP, x,
