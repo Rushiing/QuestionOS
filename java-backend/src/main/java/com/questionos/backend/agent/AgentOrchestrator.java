@@ -22,6 +22,10 @@ import java.util.Optional;
 public class AgentOrchestrator {
     /** 首轮用户议题写入 prompt 的上限，避免撑爆上下文 */
     private static final int SANDBOX_CORE_TOPIC_MAX_CHARS = 1200;
+    private static final String AUDITOR_NAME = "苏格拉底";
+    private static final String RISK_OFFICER_NAME = "尼采";
+    private static final String VALUE_JUDGE_NAME = "卡尼曼";
+    private static final String INTEGRATOR_NAME = "马可·奥勒留";
 
     private enum SandboxSlot {
         THIRD_PARTY,
@@ -114,66 +118,66 @@ public class AgentOrchestrator {
             case AUDITOR -> hasThirdPartyAgents
                     ? oneSpeakerWithAgent(
                             "auditor",
-                            "利益审计师",
+                            AUDITOR_NAME,
                             SandboxBuiltInPrompts.AUDITOR,
                             buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
-                            "利益审计师 发言结束。"
+                            AUDITOR_NAME + " 发言结束。"
                     )
                     : oneSpeakerWithDefaultLlm(
                             "auditor",
-                            "利益审计师",
+                            AUDITOR_NAME,
                             SandboxBuiltInPrompts.AUDITOR,
                             buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            "利益审计师 发言结束。"
+                            AUDITOR_NAME + " 发言结束。"
                     );
             case RISK_OFFICER -> hasThirdPartyAgents
                     ? oneSpeakerWithAgent(
                             "risk_officer",
-                            "风险预测官",
+                            RISK_OFFICER_NAME,
                             SandboxBuiltInPrompts.RISK_OFFICER,
                             buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
-                            "风险预测官 发言结束。"
+                            RISK_OFFICER_NAME + " 发言结束。"
                     )
                     : oneSpeakerWithDefaultLlm(
                             "risk_officer",
-                            "风险预测官",
+                            RISK_OFFICER_NAME,
                             SandboxBuiltInPrompts.RISK_OFFICER,
                             buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            "风险预测官 发言结束。"
+                            RISK_OFFICER_NAME + " 发言结束。"
                     );
             case VALUE_JUDGE -> hasThirdPartyAgents
                     ? oneSpeakerWithAgent(
                             "value_judge",
-                            "价值裁判",
+                            VALUE_JUDGE_NAME,
                             SandboxBuiltInPrompts.VALUE_JUDGE,
                             buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
-                            "价值裁判 发言结束。"
+                            VALUE_JUDGE_NAME + " 发言结束。"
                     )
                     : oneSpeakerWithDefaultLlm(
                             "value_judge",
-                            "价值裁判",
+                            VALUE_JUDGE_NAME,
                             SandboxBuiltInPrompts.VALUE_JUDGE,
                             buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            "价值裁判 发言结束。"
+                            VALUE_JUDGE_NAME + " 发言结束。"
                     );
             case INTEGRATOR -> hasThirdPartyAgents
                     ? oneSpeakerWithAgent(
                             "integrator",
-                            "首席整合官",
+                            INTEGRATOR_NAME,
                             SandboxBuiltInPrompts.INTEGRATOR,
                             buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
-                            "首席整合官 发言结束。"
+                            INTEGRATOR_NAME + " 发言结束。"
                     )
                     : oneSpeakerWithDefaultLlm(
                             "integrator",
-                            "首席整合官",
+                            INTEGRATOR_NAME,
                             SandboxBuiltInPrompts.INTEGRATOR,
                             buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
-                            "首席整合官 发言结束。"
+                            INTEGRATOR_NAME + " 发言结束。"
                     );
         };
     }
@@ -211,7 +215,7 @@ public class AgentOrchestrator {
         return """
                 ## 本轮审议阶段：交叉审查（辩证）
 
-                - 至少点名一位前序参与者（用「利益审计师」「风险预测官」「价值裁判」或外聘角色名），针对其**一条**具体论断表明赞成或反对及理由。
+                - 至少点名一位前序参与者（如「苏格拉底」「尼采」「卡尼曼」「马可·奥勒留」或外聘角色名），针对其**一条**具体论断表明赞成或反对及理由。
                 - 用 1 句话给出合题取向：在什么前提下双方可部分同时成立。
                 - 为完成论证，总字数允许在约 220 字内，仍以可验证的追问或行动收口。
                 """;
@@ -298,10 +302,10 @@ public class AgentOrchestrator {
     private String displayNameForSpeakerId(String id) {
         if (id == null) return "助手";
         return switch (id) {
-            case "auditor" -> "利益审计师";
-            case "risk_officer" -> "风险预测官";
-            case "value_judge" -> "价值裁判";
-            case "integrator" -> "首席整合官";
+            case "auditor" -> AUDITOR_NAME;
+            case "risk_officer" -> RISK_OFFICER_NAME;
+            case "value_judge" -> VALUE_JUDGE_NAME;
+            case "integrator" -> INTEGRATOR_NAME;
             case "sandbox-route" -> "审议路由";
             case "third-party-adapter" -> "外聘 Agent";
             default -> registryService.find(id).map(AgentRegistryService.RegisteredAgent::agentId).orElse(id);
@@ -396,7 +400,7 @@ public class AgentOrchestrator {
             String phaseBlock
     ) {
         return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
-                + "\n---\n作为首席整合官，请收束这场博弈：博弈复盘与决策沙盘表格中的「关键问题」必须**显式回扣上述用户核心议题**，"
+                + "\n---\n作为本轮综合执笔人，请收束这场博弈：博弈复盘与决策沙盘表格中的「关键问题」必须**显式回扣上述用户核心议题**，"
                 + "输出你的决策沙盘报告。\n";
     }
 

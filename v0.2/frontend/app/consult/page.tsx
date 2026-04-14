@@ -181,10 +181,10 @@ export default function ConsultPage() {
   const isLoggedIn = !!user;
 
   const defaultAgentList: Agent[] = [
-    { id: 'auditor', name: '利益审计师', avatar: '💰', description: '量化一切，只算ROI', role: 'sandbox' },
-    { id: 'risk_officer', name: '风险预测官', avatar: '⚠️', description: '模拟最坏情况，找崩盘点', role: 'sandbox' },
-    { id: 'value_judge', name: '价值裁判', avatar: '⚖️', description: '拷问动机，防止异化', role: 'sandbox' },
-    { id: 'integrator', name: '首席整合官', avatar: '🏛️', description: '收束冲突，输出决策沙盘', role: 'sandbox' },
+    { id: 'auditor', name: '苏格拉底', avatar: '🏺', description: '连续诘问前提，逼近核心命题', role: 'sandbox' },
+    { id: 'risk_officer', name: '尼采', avatar: '⚡', description: '直面风险与代价，拆解自我安慰', role: 'sandbox' },
+    { id: 'value_judge', name: '卡尼曼', avatar: '🧠', description: '识别认知偏差，校准判断质量', role: 'sandbox' },
+    { id: 'integrator', name: '马可·奥勒留', avatar: '🛡️', description: '收束冲突，沉淀可执行决策', role: 'sandbox' },
     { id: 'third-party-adapter', name: '外聘 Agent', avatar: '🧩', description: 'OpenClaw 等外部 Agent', role: 'third-party' },
   ];
 
@@ -214,16 +214,16 @@ export default function ConsultPage() {
 
   const agentMeta = (agentId: string) => {
     if (agentId === 'auditor') {
-      return { name: '利益审计师', avatar: '💰' };
+      return { name: '苏格拉底', avatar: '🏺' };
     }
     if (agentId === 'risk_officer') {
-      return { name: '风险预测官', avatar: '⚠️' };
+      return { name: '尼采', avatar: '⚡' };
     }
     if (agentId === 'value_judge') {
-      return { name: '价值裁判', avatar: '⚖️' };
+      return { name: '卡尼曼', avatar: '🧠' };
     }
     if (agentId === 'integrator') {
-      return { name: '首席整合官', avatar: '🏛️' };
+      return { name: '马可·奥勒留', avatar: '🛡️' };
     }
     if (agentId === 'third-party-adapter') {
       const inst = instances[0];
