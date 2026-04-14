@@ -93,9 +93,9 @@ public class AgentOrchestrator {
         int cycleLen = order.size();
         SandboxSlot slot = order.get(Math.floorMod(sandboxRoundIndex, cycleLen));
         SandboxDeliberationScene scene = SandboxDeliberationScene.parseStored(sandboxDeliberationSceneRaw);
-        String phaseBlock = deliberationPhaseBlock(slot, sandboxRoundIndex, cycleLen);
         String latestUser = latestUserMessage(history);
         List<ConversationMessage> prior = priorHistory(history);
+        String phaseBlock = deliberationPhaseBlock(slot, sandboxRoundIndex, cycleLen, prior);
 
         return switch (slot) {
             case THIRD_PARTY -> {
@@ -179,9 +179,15 @@ public class AgentOrchestrator {
     }
 
     /**
-     * 与 Agora 式协议对齐的轻量阶段：首轮循环内为「独立分析」，之后为「交叉审查」，整合官为「综合裁决」。
+     * 与 Agora 式协议对齐的轻量阶段：会话中**尚无任何 Agent 发言**时为独立分析；否则（含用户第二轮起）攻防位进入交叉审查。
+     * 整合同一轮多圈时仍可用 lap≥1 强化交锋。
      */
-    private static String deliberationPhaseBlock(SandboxSlot slot, int sandboxRoundIndex, int cycleLen) {
+    private static String deliberationPhaseBlock(
+            SandboxSlot slot,
+            int sandboxRoundIndex,
+            int cycleLen,
+            List<ConversationMessage> prior
+    ) {
         if (cycleLen <= 0) {
             cycleLen = 4;
         }
@@ -193,7 +199,8 @@ public class AgentOrchestrator {
                     """;
         }
         int lap = sandboxRoundIndex / cycleLen;
-        if (lap == 0) {
+        boolean cross = priorHasAgentReply(prior) || lap >= 1;
+        if (!cross) {
             return """
                     ## 本轮审议阶段：独立分析
 
@@ -208,6 +215,18 @@ public class AgentOrchestrator {
                 - 用 1 句话给出合题取向：在什么前提下双方可部分同时成立。
                 - 为完成论证，总字数允许在约 220 字内，仍以可验证的追问或行动收口。
                 """;
+    }
+
+    private static boolean priorHasAgentReply(List<ConversationMessage> prior) {
+        if (prior == null || prior.isEmpty()) {
+            return false;
+        }
+        for (ConversationMessage m : prior) {
+            if (m.role() == MessageRole.AGENT && m.content() != null && !m.content().isBlank()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Flux<AgentReplyChunk> oneSpeakerWithAgent(
