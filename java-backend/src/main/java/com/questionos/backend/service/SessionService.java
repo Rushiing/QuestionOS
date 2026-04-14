@@ -170,25 +170,34 @@ public class SessionService {
         }
 
         List<ConversationMessage> history = List.copyOf(messages.get(sessionId));
-        int sandboxRound = session.getMode() == SessionMode.SANDBOX ? session.nextSandboxSpeakerRound() : 0;
         SandboxClassificationResult classificationSnapshot = null;
+        boolean needClarificationFirst = false;
         if (session.getMode() == SessionMode.SANDBOX) {
             String scene = session.getSandboxDeliberationScene();
             if (scene == null || scene.isBlank()) {
-                String issue = firstChronologicalUserText(history);
+                String issue = classifyIssueText(history);
                 classificationSnapshot = sandboxSceneClassifier.classifyDetailed(issue);
-                session.setSandboxDeliberationScene(classificationSnapshot.scene().name());
-                persistSnapshot(sessionId);
+                boolean hadPriorClassify = sessionAlreadyHasSandboxClassify(messages.get(sessionId));
+                boolean lowConfidence = "LOW".equalsIgnoreCase(classificationSnapshot.confidence()) || classificationSnapshot.forcedSecondary();
+                needClarificationFirst = lowConfidence && !hadPriorClassify;
+                if (!needClarificationFirst) {
+                    session.setSandboxDeliberationScene(classificationSnapshot.scene().name());
+                    persistSnapshot(sessionId);
+                }
             }
         }
         boolean emitSandboxRoute = session.getMode() == SessionMode.SANDBOX
                 && !sessionAlreadyHasSandboxRoute(messages.get(sessionId));
         if (emitSandboxRoute) {
-            SandboxDeliberationScene sc = SandboxDeliberationScene.parseStored(session.getSandboxDeliberationScene());
+            SandboxDeliberationScene sc = needClarificationFirst
+                    ? classificationSnapshot.scene()
+                    : SandboxDeliberationScene.parseStored(session.getSandboxDeliberationScene());
             SandboxClassificationResult cr = classificationSnapshot != null
                     ? classificationSnapshot
                     : SandboxClassificationResult.fromSceneOnly(sc);
-            String classifyMd = SandboxClassifyCard.markdown(cr);
+            String classifyMd = needClarificationFirst
+                    ? SandboxClassifyCard.markdownNeedClarification(cr)
+                    : SandboxClassifyCard.markdown(cr);
             appendMessage(session, MessageRole.AGENT, classifyMd, turnId, "sandbox-classify");
             Map<String, Object> classifyPayload = new LinkedHashMap<>();
             classifyPayload.put("content", classifyMd);
@@ -198,6 +207,7 @@ public class SessionService {
             classifyPayload.put("normalizedIssue", cr.normalizedIssue() == null ? "" : cr.normalizedIssue());
             classifyPayload.put("confidence", cr.confidence() == null ? "" : cr.confidence());
             classifyPayload.put("forcedSecondary", cr.forcedSecondary());
+            classifyPayload.put("requiresClarification", needClarificationFirst);
             classifyPayload.put("step", 1);
             publishEvent(sessionId, turnId, "sandbox_classify", jsonPayload(classifyPayload));
             persistSnapshot(sessionId);
@@ -208,6 +218,10 @@ public class SessionService {
                     sc,
                     cr.confidence(),
                     cr.forcedSecondary());
+            if (needClarificationFirst) {
+                publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + "}");
+                return Optional.of(userMessage.messageId());
+            }
 
             boolean thirdParty = agentRegistryService.firstAvailableAgent().isPresent();
             String routeMd = SandboxAgoraRouteCard.markdown(sc, thirdParty);
@@ -217,6 +231,7 @@ public class SessionService {
             log.info("sandbox route card persisted+emitted sessionId={} turnId={} scene={}", sessionId, turnId, sc);
         }
         List<ConversationMessage> pipelineHistory = filterSandboxUiPlaceholders(messages.get(sessionId));
+        int sandboxRound = session.getMode() == SessionMode.SANDBOX ? session.nextSandboxSpeakerRound() : 0;
         log.info(
                 "session agent pipeline start sessionId={} turnId={} mode={} historySize={} pipelineHistorySize={} userChars={} sandboxScene={}",
                 sessionId,
@@ -367,6 +382,13 @@ public class SessionService {
         return msgs.stream().anyMatch(m -> "sandbox-route".equals(m.agentSpeakerId()));
     }
 
+    private static boolean sessionAlreadyHasSandboxClassify(List<ConversationMessage> msgs) {
+        if (msgs == null) {
+            return false;
+        }
+        return msgs.stream().anyMatch(m -> "sandbox-classify".equals(m.agentSpeakerId()));
+    }
+
     /** 传给 LLM 的历史不含沙盘 UI 占位消息，避免污染攻防上下文。 */
     private static List<ConversationMessage> filterSandboxUiPlaceholders(List<ConversationMessage> src) {
         if (src == null || src.isEmpty()) {
@@ -390,6 +412,33 @@ public class SessionService {
             }
         }
         return "";
+    }
+
+    /**
+     * 步骤①分诊用输入：优先拼接前两条用户句，确保「补充一句」后可二次入室而非一直盯首句。
+     */
+    private static String classifyIssueText(List<ConversationMessage> history) {
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        for (ConversationMessage m : history) {
+            if (m.role() != MessageRole.USER || m.content() == null) {
+                continue;
+            }
+            String t = m.content().trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append("\n");
+            }
+            sb.append(t);
+            n++;
+            if (n >= 2) {
+                break;
+            }
+        }
+        String combined = sb.toString().trim();
+        return combined.isEmpty() ? firstChronologicalUserText(history) : combined;
     }
 
     private String jsonPayloadForChunkContent(String content) {
