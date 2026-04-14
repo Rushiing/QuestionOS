@@ -499,6 +499,14 @@ export default function ConsultPage() {
   const streamTurnEvents = async (sid: string) => {
     let isDone = false;
     let activeAgentMsgId: string | null = null;
+    const clearActiveStreaming = () => {
+      if (!activeAgentMsgId) return;
+      const targetId = activeAgentMsgId;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === targetId ? { ...m, is_streaming: false } : m))
+      );
+      activeAgentMsgId = null;
+    };
     const appendDebugLog = (line: string) => {
       setDebugLogs((prev) => {
         const next = [...prev, line];
@@ -576,12 +584,7 @@ export default function ConsultPage() {
               : m
           ));
         } else if (eventType === 'agent_done') {
-          if (activeAgentMsgId) {
-            setMessages(prev => prev.map(m =>
-              m.id === activeAgentMsgId ? { ...m, is_streaming: false } : m
-            ));
-            activeAgentMsgId = null;
-          }
+          clearActiveStreaming();
         } else if (eventType === 'handoff') {
           setMessages(prev => [...prev, {
             id: `${Date.now()}-handoff`,
@@ -590,8 +593,10 @@ export default function ConsultPage() {
           }]);
         } else if (eventType === 'done') {
           // 后端在 done 之后还会发 turn_done；若此处就停止，会漏掉 turn_done，下一轮 Last-Event-ID 重放会先收到旧的 turn_done 并误结束。
+          clearActiveStreaming();
           return false;
         } else if (eventType === 'turn_done') {
+          clearActiveStreaming();
           const warnId = slowRoundWarningIdRef.current;
           if (warnId) {
             slowRoundWarningIdRef.current = null;
@@ -606,6 +611,7 @@ export default function ConsultPage() {
       return false;
     }, (line) => appendDebugLog(`[${new Date().toLocaleTimeString('zh-CN')}] ${line}`));
 
+    clearActiveStreaming();
     if (!isDone) {
       return;
     }
