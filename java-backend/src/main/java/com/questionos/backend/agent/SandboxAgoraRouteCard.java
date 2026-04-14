@@ -11,8 +11,10 @@ public final class SandboxAgoraRouteCard {
         StringBuilder sb = new StringBuilder();
         sb.append("### 🧭 审议路由（步骤 ②）\n\n");
         sb.append("你的问题已归入 **").append(r.roomTitle).append("**（").append(r.subtitle).append("）。\n\n");
-        sb.append("**本轮拟入席的思想家（典型面板）**  \n");
+        sb.append("**Agora 思想谱系参照（帮助理解本室提问重心；不是界面上的发言者实名列表）**  \n");
         sb.append(r.panelIntro).append("\n\n");
+        sb.append("**本站本轮实际轮转发言者**  \n");
+        sb.append("**苏格拉底**（诘问与概念澄清）→ **尼采**（代价与叙事重估）→ **卡尼曼**（偏差校准）→ **马可·奥勒留**（可控域内综合收束）。\n\n");
         sb.append("**审议角度与追问焦点**\n\n");
         sb.append("| 审议角度 | 本轮追问焦点 |\n");
         sb.append("|----------|----------------|\n");
@@ -23,7 +25,7 @@ public final class SandboxAgoraRouteCard {
         if (hasThirdPartyAgents) {
             sb.append("已接入 **外聘智能体**：将在轮转中与上述角度交替，补充外视角与追问。\n\n");
         }
-        sb.append("> 下列发言将**依次围绕上表审议角度**展开，与你在本卡中看到的思想家面板保持同一套审议逻辑。\n\n");
+        sb.append("> 下列界面发言将**依次围绕上表审议角度**展开；上段历史人物谱系与本轮四位轮转发言者**分工一致、姓名不必相同**。\n\n");
         sb.append("接下来进入 **多角色轮流拆解**，请先看第一位专家发言，再按需追问。\n");
         return sb.toString();
     }
