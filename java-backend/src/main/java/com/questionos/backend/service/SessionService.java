@@ -183,7 +183,17 @@ public class SessionService {
         AtomicReference<String> activeSpeakerId = new AtomicReference<>();
         String sceneForPipeline =
                 session.getMode() == SessionMode.SANDBOX ? session.getSandboxDeliberationScene() : null;
-        orchestrator.runPipeline(sessionId, turnId, content, session.getMode(), history, sandboxRound, sceneForPipeline)
+        boolean emitSandboxRoute =
+                session.getMode() == SessionMode.SANDBOX && countUserMessages(history) == 1;
+        orchestrator.runPipeline(
+                        sessionId,
+                        turnId,
+                        content,
+                        session.getMode(),
+                        history,
+                        sandboxRound,
+                        sceneForPipeline,
+                        emitSandboxRoute)
                 .doOnNext(chunk -> {
                     if ("agent_start".equals(chunk.eventType())) {
                         String c = chunk.content();
@@ -194,6 +204,7 @@ public class SessionService {
                         agentReply.get().append(chunk.content());
                     }
                     // agent_delta：仅实时 UI，不入库（最终仍以 agent_chunk 为准）
+                    // sandbox_route：首轮审议室说明，仅 SSE 展示，不入库
                     publishEvent(sessionId, turnId, chunk.eventType(), jsonPayloadForChunkContent(chunk.content()));
                 })
                 .doOnComplete(() -> {
@@ -289,6 +300,13 @@ public class SessionService {
                 .event(event.eventType())
                 .data("{\"eventId\":\"" + event.eventId() + "\",\"seq\":" + event.seq() + ",\"turnId\":" + event.turnId() + ",\"payload\":" + event.payload() + "}")
                 .build();
+    }
+
+    private static long countUserMessages(List<ConversationMessage> history) {
+        if (history == null) {
+            return 0;
+        }
+        return history.stream().filter(m -> m.role() == MessageRole.USER).count();
     }
 
     /** 取时间序上首条用户文本，供沙盘场景分类（与核心议题钉定逻辑一致）。 */

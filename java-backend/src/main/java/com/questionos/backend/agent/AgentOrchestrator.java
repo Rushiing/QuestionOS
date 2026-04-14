@@ -52,15 +52,23 @@ public class AgentOrchestrator {
             SessionMode mode,
             List<ConversationMessage> history,
             int sandboxRoundIndex,
-            String sandboxDeliberationScene
+            String sandboxDeliberationScene,
+            boolean emitSandboxRouteCard
     ) {
         if (mode == SessionMode.CALIBRATION) {
             return Flux.just(new AgentReplyChunk("agent_start", "main-calibrate|主校准 Agent"))
                     .concatWith(mainAgent.replyWithHistory(sessionId, turnId, input, history))
                     .concatWithValues(new AgentReplyChunk("done", "本轮结束"));
         }
-        return sandboxSingleReply(history, sandboxRoundIndex, sandboxDeliberationScene)
+        Flux<AgentReplyChunk> main = sandboxSingleReply(history, sandboxRoundIndex, sandboxDeliberationScene)
                 .concatWithValues(new AgentReplyChunk("done", "本轮结束"));
+        if (!emitSandboxRouteCard) {
+            return main;
+        }
+        SandboxDeliberationScene sc = SandboxDeliberationScene.parseStored(sandboxDeliberationScene);
+        boolean thirdParty = registryService.firstAvailableAgent().isPresent();
+        String routeMd = SandboxAgoraRouteCard.markdown(sc, thirdParty);
+        return Flux.just(new AgentReplyChunk("sandbox_route", routeMd)).concatWith(main);
     }
 
     private Flux<AgentReplyChunk> sandboxSingleReply(

@@ -25,6 +25,8 @@ interface Agent {
 interface Message {
   id: string;
   role: 'user' | 'agent' | 'system';
+  /** 首轮沙盘：Agora 式审议路由卡片（与系统提示黄条区分样式） */
+  variant?: 'sandbox_route';
   agent_id?: string;
   agent_name?: string;
   agent_avatar?: string;
@@ -522,7 +524,18 @@ export default function ConsultPage() {
         const parsed = JSON.parse(dataRaw);
         const content = parsed?.payload?.content || '';
 
-        if (eventType === 'agent_start') {
+        if (eventType === 'sandbox_route') {
+          hasStreamActivityRef.current = true;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `${Date.now()}-route`,
+              role: 'system',
+              variant: 'sandbox_route',
+              content: String(content || ''),
+            },
+          ]);
+        } else if (eventType === 'agent_start') {
           hasStreamActivityRef.current = true;
           const raw = String(content);
           const bar = raw.indexOf('|');
@@ -1101,6 +1114,17 @@ export default function ConsultPage() {
                     {msg.role === 'user' ? (
                       <div className="rounded-2xl px-4 py-3 bg-slate-100 text-slate-800 rounded-br-md">
                         <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
+                      </div>
+                    ) : msg.variant === 'sandbox_route' ? (
+                      <div className="rounded-2xl border-2 border-teal-300/70 bg-gradient-to-br from-teal-50 via-white to-cyan-50 px-4 py-3 shadow-sm text-slate-800">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-teal-700 mb-2">
+                          审议路由
+                        </div>
+                        <div className="max-w-none text-[0.9375rem] leading-relaxed markdown-content consult-agent-md">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={consultAgentMarkdownComponents}>
+                            {msg.content}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     ) : msg.role === 'system' ? (
                       <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-xl text-sm">
