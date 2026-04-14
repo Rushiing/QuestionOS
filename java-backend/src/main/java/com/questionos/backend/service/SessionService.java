@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.questionos.backend.agent.AgentOrchestrator;
 import com.questionos.backend.agent.AgentReplyChunk;
 import com.questionos.backend.agent.SandboxAgoraRouteCard;
+import com.questionos.backend.agent.SandboxClassifyCard;
+import com.questionos.backend.agent.SandboxClassificationResult;
 import com.questionos.backend.agent.SandboxDeliberationScene;
 import com.questionos.backend.agent.SandboxSceneClassifier;
 import com.questionos.backend.integrations.AgentRegistryService;
@@ -28,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -168,12 +171,13 @@ public class SessionService {
 
         List<ConversationMessage> history = List.copyOf(messages.get(sessionId));
         int sandboxRound = session.getMode() == SessionMode.SANDBOX ? session.nextSandboxSpeakerRound() : 0;
+        SandboxClassificationResult classificationSnapshot = null;
         if (session.getMode() == SessionMode.SANDBOX) {
             String scene = session.getSandboxDeliberationScene();
             if (scene == null || scene.isBlank()) {
                 String issue = firstChronologicalUserText(history);
-                String classified = sandboxSceneClassifier.classifyBlocking(issue);
-                session.setSandboxDeliberationScene(classified);
+                classificationSnapshot = sandboxSceneClassifier.classifyDetailed(issue);
+                session.setSandboxDeliberationScene(classificationSnapshot.scene().name());
                 persistSnapshot(sessionId);
             }
         }
@@ -181,6 +185,30 @@ public class SessionService {
                 && !sessionAlreadyHasSandboxRoute(messages.get(sessionId));
         if (emitSandboxRoute) {
             SandboxDeliberationScene sc = SandboxDeliberationScene.parseStored(session.getSandboxDeliberationScene());
+            SandboxClassificationResult cr = classificationSnapshot != null
+                    ? classificationSnapshot
+                    : SandboxClassificationResult.fromSceneOnly(sc);
+            String classifyMd = SandboxClassifyCard.markdown(cr);
+            appendMessage(session, MessageRole.AGENT, classifyMd, turnId, "sandbox-classify");
+            Map<String, Object> classifyPayload = new LinkedHashMap<>();
+            classifyPayload.put("content", classifyMd);
+            classifyPayload.put("scene", sc.name());
+            classifyPayload.put("roomTitle", SandboxAgoraRouteCard.roomTitle(sc));
+            classifyPayload.put("roomSubtitle", SandboxAgoraRouteCard.roomSubtitle(sc));
+            classifyPayload.put("normalizedIssue", cr.normalizedIssue() == null ? "" : cr.normalizedIssue());
+            classifyPayload.put("confidence", cr.confidence() == null ? "" : cr.confidence());
+            classifyPayload.put("forcedSecondary", cr.forcedSecondary());
+            classifyPayload.put("step", 1);
+            publishEvent(sessionId, turnId, "sandbox_classify", jsonPayload(classifyPayload));
+            persistSnapshot(sessionId);
+            log.info(
+                    "sandbox classify card persisted+emitted sessionId={} turnId={} scene={} confidence={} forcedSecondary={}",
+                    sessionId,
+                    turnId,
+                    sc,
+                    cr.confidence(),
+                    cr.forcedSecondary());
+
             boolean thirdParty = agentRegistryService.firstAvailableAgent().isPresent();
             String routeMd = SandboxAgoraRouteCard.markdown(sc, thirdParty);
             appendMessage(session, MessageRole.AGENT, routeMd, turnId, "sandbox-route");
@@ -188,7 +216,7 @@ public class SessionService {
             persistSnapshot(sessionId);
             log.info("sandbox route card persisted+emitted sessionId={} turnId={} scene={}", sessionId, turnId, sc);
         }
-        List<ConversationMessage> pipelineHistory = filterOutSandboxRouteMessages(messages.get(sessionId));
+        List<ConversationMessage> pipelineHistory = filterSandboxUiPlaceholders(messages.get(sessionId));
         log.info(
                 "session agent pipeline start sessionId={} turnId={} mode={} historySize={} pipelineHistorySize={} userChars={} sandboxScene={}",
                 sessionId,
@@ -339,12 +367,16 @@ public class SessionService {
         return msgs.stream().anyMatch(m -> "sandbox-route".equals(m.agentSpeakerId()));
     }
 
-    /** 传给 LLM 的历史不含「审议路由」占位消息，避免污染攻防上下文。 */
-    private static List<ConversationMessage> filterOutSandboxRouteMessages(List<ConversationMessage> src) {
+    /** 传给 LLM 的历史不含沙盘 UI 占位消息，避免污染攻防上下文。 */
+    private static List<ConversationMessage> filterSandboxUiPlaceholders(List<ConversationMessage> src) {
         if (src == null || src.isEmpty()) {
             return List.of();
         }
-        return src.stream().filter(m -> !"sandbox-route".equals(m.agentSpeakerId())).toList();
+        return src.stream().filter(m -> !isSandboxUiPlaceholder(m.agentSpeakerId())).toList();
+    }
+
+    private static boolean isSandboxUiPlaceholder(String agentSpeakerId) {
+        return "sandbox-route".equals(agentSpeakerId) || "sandbox-classify".equals(agentSpeakerId);
     }
 
     /** 取时间序上首条用户文本，供沙盘场景分类（与核心议题钉定逻辑一致）。 */
@@ -363,6 +395,14 @@ public class SessionService {
     private String jsonPayloadForChunkContent(String content) {
         try {
             return objectMapper.writeValueAsString(Map.of("content", content == null ? "" : content));
+        } catch (JsonProcessingException e) {
+            return "{\"content\":\"\"}";
+        }
+    }
+
+    private String jsonPayload(Map<String, Object> payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
             return "{\"content\":\"\"}";
         }

@@ -25,8 +25,8 @@ interface Agent {
 interface Message {
   id: string;
   role: 'user' | 'agent' | 'system';
-  /** 首轮沙盘：Agora 式审议路由卡片（与系统提示黄条区分样式） */
-  variant?: 'sandbox_route';
+  /** 首轮沙盘：步骤① 议题确认与入室 / 步骤② 审议路由卡片 */
+  variant?: 'sandbox_classify' | 'sandbox_route';
   agent_id?: string;
   agent_name?: string;
   agent_avatar?: string;
@@ -119,12 +119,27 @@ const sandboxRouteMarkdownComponents: Components = {
   ),
 };
 
+/** 步骤① 分诊卡片：与步骤②（teal 审议路由）区分 */
+const sandboxClassifyMarkdownComponents: Components = {
+  ...consultAgentMarkdownComponents,
+  h3: ({ node, children, ...props }) => (
+    <h3
+      className="mt-0 mb-3 text-xl font-bold tracking-tight text-indigo-900 border-b border-indigo-300/55 pb-2.5"
+      {...props}
+    >
+      {children}
+    </h3>
+  ),
+};
+
 function agentMarkdownSource(msg: Message): string {
   const raw = msg.content || (msg.is_streaming ? '...' : '');
   if (raw === '...') return raw;
   const isIntegrator =
     msg.role === 'agent' &&
-    (msg.agent_id === 'integrator' || msg.agent_name === '首席整合官');
+    (msg.agent_id === 'integrator' ||
+      msg.agent_name === '马可·奥勒留' ||
+      msg.agent_name === '首席整合官');
   if (isIntegrator) {
     return normalizeIntegratorExpertBullets(raw);
   }
@@ -545,7 +560,25 @@ export default function ConsultPage() {
         const parsed = JSON.parse(dataRaw);
         const content = parsed?.payload?.content || '';
 
-        if (eventType === 'sandbox_route') {
+        if (eventType === 'sandbox_classify') {
+          hasStreamActivityRef.current = true;
+          const p = parsed?.payload;
+          const md =
+            typeof p?.content === 'string' && p.content.trim()
+              ? p.content
+              : String(content || '');
+          flushSync(() => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `${Date.now()}-classify`,
+                role: 'system',
+                variant: 'sandbox_classify',
+                content: md,
+              },
+            ]);
+          });
+        } else if (eventType === 'sandbox_route') {
           hasStreamActivityRef.current = true;
           flushSync(() => {
             setMessages((prev) => [
@@ -644,7 +677,11 @@ export default function ConsultPage() {
         try {
           const msgList = await sandboxClient.listMessages(sid);
           const latestAgent = [...msgList].reverse().find(
-            (m) => m.role === 'AGENT' && m.content?.trim() && m.agentSpeakerId !== 'sandbox-route',
+            (m) =>
+              m.role === 'AGENT' &&
+              m.content?.trim() &&
+              m.agentSpeakerId !== 'sandbox-route' &&
+              m.agentSpeakerId !== 'sandbox-classify',
           );
           if (latestAgent) {
             const aid = (latestAgent.agentSpeakerId || 'auditor').trim() || 'auditor';
@@ -1138,6 +1175,14 @@ export default function ConsultPage() {
                     {msg.role === 'user' ? (
                       <div className="rounded-2xl px-4 py-3 bg-slate-100 text-slate-800 rounded-br-md">
                         <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
+                      </div>
+                    ) : msg.variant === 'sandbox_classify' ? (
+                      <div className="rounded-2xl border-2 border-indigo-300/70 bg-gradient-to-br from-indigo-50 via-white to-violet-50/80 px-4 py-3 shadow-sm text-slate-800">
+                        <div className="max-w-none text-[0.9375rem] leading-relaxed markdown-content consult-agent-md">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={sandboxClassifyMarkdownComponents}>
+                            {msg.content}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     ) : msg.variant === 'sandbox_route' ? (
                       <div className="rounded-2xl border-2 border-teal-300/70 bg-gradient-to-br from-teal-50 via-white to-cyan-50 px-4 py-3 shadow-sm text-slate-800">

@@ -206,7 +206,9 @@ export default function HistoryPage() {
                                 ? '👤 '
                                 : msg.agentSpeakerId === 'sandbox-route'
                                   ? '🧭 '
-                                  : '🤖 '}
+                                  : msg.agentSpeakerId === 'sandbox-classify'
+                                    ? '🔎 '
+                                    : '🤖 '}
                             </span>
                             <span className="line-clamp-2">{msg.content}</span>
                           </div>

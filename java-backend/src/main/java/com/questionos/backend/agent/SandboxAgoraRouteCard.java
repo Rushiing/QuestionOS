@@ -9,7 +9,7 @@ public final class SandboxAgoraRouteCard {
     public static String markdown(SandboxDeliberationScene scene, boolean hasThirdPartyAgents) {
         Room r = roomFor(scene);
         StringBuilder sb = new StringBuilder();
-        sb.append("### 🧭 审议路由\n\n");
+        sb.append("### 🧭 审议路由（步骤 ②）\n\n");
         sb.append("你的问题已归入 **").append(r.roomTitle).append("**（").append(r.subtitle).append("）。\n\n");
         sb.append("**本轮拟入席的思想家（典型面板）**  \n");
         sb.append(r.panelIntro).append("\n\n");
@@ -122,5 +122,15 @@ public final class SandboxAgoraRouteCard {
                     }
             );
         };
+    }
+
+    /** 审议室中文名（与路由卡片一致） */
+    public static String roomTitle(SandboxDeliberationScene scene) {
+        return roomFor(scene).roomTitle();
+    }
+
+    /** 审议室副标题 */
+    public static String roomSubtitle(SandboxDeliberationScene scene) {
+        return roomFor(scene).subtitle();
     }
 }

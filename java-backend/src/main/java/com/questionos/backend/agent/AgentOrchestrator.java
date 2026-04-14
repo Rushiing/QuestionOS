@@ -307,6 +307,7 @@ public class AgentOrchestrator {
             case "value_judge" -> VALUE_JUDGE_NAME;
             case "integrator" -> INTEGRATOR_NAME;
             case "sandbox-route" -> "审议路由";
+            case "sandbox-classify" -> "议题分诊";
             case "third-party-adapter" -> "外聘 Agent";
             default -> registryService.find(id).map(AgentRegistryService.RegisteredAgent::agentId).orElse(id);
         };
@@ -318,7 +319,7 @@ public class AgentOrchestrator {
             if (m.role() != MessageRole.AGENT || m.content() == null || m.content().isBlank()) {
                 continue;
             }
-            if ("sandbox-route".equals(m.agentSpeakerId())) {
+            if ("sandbox-route".equals(m.agentSpeakerId()) || "sandbox-classify".equals(m.agentSpeakerId())) {
                 continue;
             }
             String label = displayNameForSpeakerId(m.agentSpeakerId());
