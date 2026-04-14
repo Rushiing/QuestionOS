@@ -177,8 +177,8 @@ public class SessionService {
                 persistSnapshot(sessionId);
             }
         }
-        boolean emitSandboxRoute =
-                session.getMode() == SessionMode.SANDBOX && countUserMessages(history) == 1;
+        boolean emitSandboxRoute = session.getMode() == SessionMode.SANDBOX
+                && !sessionAlreadyHasSandboxRoute(messages.get(sessionId));
         if (emitSandboxRoute) {
             SandboxDeliberationScene sc = SandboxDeliberationScene.parseStored(session.getSandboxDeliberationScene());
             boolean thirdParty = agentRegistryService.firstAvailableAgent().isPresent();
@@ -186,6 +186,7 @@ public class SessionService {
             appendMessage(session, MessageRole.AGENT, routeMd, turnId, "sandbox-route");
             publishEvent(sessionId, turnId, "sandbox_route", jsonPayloadForChunkContent(routeMd));
             persistSnapshot(sessionId);
+            log.info("sandbox route card persisted+emitted sessionId={} turnId={} scene={}", sessionId, turnId, sc);
         }
         List<ConversationMessage> pipelineHistory = filterOutSandboxRouteMessages(messages.get(sessionId));
         log.info(
@@ -309,18 +310,33 @@ public class SessionService {
     }
 
     private ServerSentEvent<String> toSse(StreamEvent event) {
-        return ServerSentEvent.<String>builder()
-                .id(String.valueOf(event.seq()))
-                .event(event.eventType())
-                .data("{\"eventId\":\"" + event.eventId() + "\",\"seq\":" + event.seq() + ",\"turnId\":" + event.turnId() + ",\"payload\":" + event.payload() + "}")
-                .build();
+        try {
+            var envelope = new java.util.LinkedHashMap<String, Object>();
+            envelope.put("eventId", event.eventId());
+            envelope.put("seq", event.seq());
+            envelope.put("turnId", event.turnId());
+            envelope.put("payload", objectMapper.readTree(event.payload()));
+            String data = objectMapper.writeValueAsString(envelope);
+            return ServerSentEvent.<String>builder()
+                    .id(String.valueOf(event.seq()))
+                    .event(event.eventType())
+                    .data(data)
+                    .build();
+        } catch (JsonProcessingException e) {
+            log.warn("sse envelope serialize failed eventId={} type={}", event.eventId(), event.eventType(), e);
+            return ServerSentEvent.<String>builder()
+                    .id(String.valueOf(event.seq()))
+                    .event(event.eventType())
+                    .data("{\"eventId\":\"" + event.eventId() + "\",\"seq\":" + event.seq() + ",\"turnId\":" + event.turnId() + ",\"payload\":{\"content\":\"\"}}")
+                    .build();
+        }
     }
 
-    private static long countUserMessages(List<ConversationMessage> history) {
-        if (history == null) {
-            return 0;
+    private static boolean sessionAlreadyHasSandboxRoute(List<ConversationMessage> msgs) {
+        if (msgs == null) {
+            return false;
         }
-        return history.stream().filter(m -> m.role() == MessageRole.USER).count();
+        return msgs.stream().anyMatch(m -> "sandbox-route".equals(m.agentSpeakerId()));
     }
 
     /** 传给 LLM 的历史不含「审议路由」占位消息，避免污染攻防上下文。 */

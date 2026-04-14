@@ -526,15 +526,17 @@ export default function ConsultPage() {
 
         if (eventType === 'sandbox_route') {
           hasStreamActivityRef.current = true;
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `${Date.now()}-route`,
-              role: 'system',
-              variant: 'sandbox_route',
-              content: String(content || ''),
-            },
-          ]);
+          flushSync(() => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `${Date.now()}-route`,
+                role: 'system',
+                variant: 'sandbox_route',
+                content: String(content || ''),
+              },
+            ]);
+          });
         } else if (eventType === 'agent_start') {
           hasStreamActivityRef.current = true;
           const raw = String(content);
