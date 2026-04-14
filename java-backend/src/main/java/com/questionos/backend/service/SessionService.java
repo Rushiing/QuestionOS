@@ -176,6 +176,27 @@ public class SessionService {
             String scene = session.getSandboxDeliberationScene();
             if (scene == null || scene.isBlank()) {
                 String issue = classifyIssueText(history);
+                if (isMeaninglessIssue(issue)) {
+                    String blockMd = SandboxClassifyCard.markdownInvalidInput(content);
+                    appendMessage(session, MessageRole.AGENT, blockMd, turnId, "sandbox-classify");
+                    Map<String, Object> classifyPayload = new LinkedHashMap<>();
+                    classifyPayload.put("content", blockMd);
+                    classifyPayload.put("scene", "");
+                    classifyPayload.put("roomTitle", "");
+                    classifyPayload.put("roomSubtitle", "");
+                    classifyPayload.put("normalizedIssue", "");
+                    classifyPayload.put("confidence", "LOW");
+                    classifyPayload.put("forcedSecondary", false);
+                    classifyPayload.put("requiresClarification", true);
+                    classifyPayload.put("invalidInput", true);
+                    classifyPayload.put("step", 1);
+                    publishEvent(sessionId, turnId, "sandbox_classify", jsonPayload(classifyPayload));
+                    persistSnapshot(sessionId);
+                    publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + "}");
+                    log.info("sandbox classify blocked meaningless input sessionId={} turnId={} raw='{}'",
+                            sessionId, turnId, safeLogSnippet(content));
+                    return Optional.of(userMessage.messageId());
+                }
                 boolean hadPriorClassify = sessionAlreadyHasSandboxClassify(messages.get(sessionId));
                 classificationSnapshot = hadPriorClassify
                         // 步骤①已完成补充后，进入步骤②前禁止再落到 GENERAL。
@@ -442,6 +463,49 @@ public class SessionService {
         }
         String combined = sb.toString().trim();
         return combined.isEmpty() ? firstChronologicalUserText(history) : combined;
+    }
+
+    private static boolean isMeaninglessIssue(String issue) {
+        if (issue == null) {
+            return true;
+        }
+        String trimmed = issue.trim();
+        if (trimmed.isEmpty()) {
+            return true;
+        }
+        String compact = trimmed.replaceAll("\\s+", "");
+        if (compact.isEmpty()) {
+            return true;
+        }
+        // 纯重复字符：ddd / ssss / 1111 等
+        if (compact.matches("^(.)\\1{2,}$")) {
+            return true;
+        }
+        boolean hasHan = compact.matches(".*[\\u4e00-\\u9fff].*");
+        // 无中文且特别短（如 ddd / ok / hi），通常无法分诊。
+        if (!hasHan && compact.length() <= 3) {
+            return true;
+        }
+        String lower = compact.toLowerCase();
+        if (lower.matches("^(qwe|asd|zxc|test|aaaa|bbbb|cccc|dddd|ssss)+$")) {
+            return true;
+        }
+        // 英文输入必须至少给到一个「句子级」信息量（空格或符号 + 足够长度）
+        if (!hasHan && !trimmed.contains(" ") && compact.length() <= 6 && compact.matches("^[a-zA-Z]+$")) {
+            return true;
+        }
+        return false;
+    }
+
+    private static String safeLogSnippet(String s) {
+        if (s == null) {
+            return "";
+        }
+        String t = s.replaceAll("\\s+", " ").trim();
+        if (t.length() <= 48) {
+            return t;
+        }
+        return t.substring(0, 48) + "...";
     }
 
     private String jsonPayloadForChunkContent(String content) {

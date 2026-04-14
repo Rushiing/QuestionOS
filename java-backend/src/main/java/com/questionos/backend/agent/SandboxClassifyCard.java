@@ -14,6 +14,27 @@ public final class SandboxClassifyCard {
         return markdown(r, true);
     }
 
+    /** 输入噪声拦截卡：在步骤①先让用户补足最小可分诊信息。 */
+    public static String markdownInvalidInput(String rawInput) {
+        String shown = rawInput == null ? "" : rawInput.trim();
+        if (shown.length() > 48) {
+            shown = shown.substring(0, 48) + "…";
+        }
+        if (shown.isBlank()) {
+            shown = "（空）";
+        }
+        return "### \uD83D\uDD0E 议题确认与入室（步骤 ①）\n\n"
+                + "**检测到当前输入信息不足，暂不进入步骤②。**\n\n"
+                + "**你刚输入的是**：`" + shown + "`\n\n"
+                + "请补成一句可分诊的问题，至少包含以下三项中的两项：\n"
+                + "- 你要达成的目标\n"
+                + "- 你最担心的损失或约束\n"
+                + "- 时间边界（如 1 周/1 月）\n\n"
+                + "示例：`用户流失升高，我想在 4 周内把留存拉回 15%，同时不增加预算。`\n\n"
+                + "---\n\n"
+                + "当前仍停在步骤①，等待你补充后再进入 **审议路由（步骤 ②）**。\n";
+    }
+
     private static String markdown(SandboxClassificationResult r, boolean needClarification) {
         SandboxDeliberationScene sc = r.scene();
         String roomTitle = SandboxAgoraRouteCard.roomTitle(sc);
