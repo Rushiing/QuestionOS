@@ -51,17 +51,23 @@ public class AgentOrchestrator {
             String input,
             SessionMode mode,
             List<ConversationMessage> history,
-            int sandboxRoundIndex
+            int sandboxRoundIndex,
+            String sandboxDeliberationScene
     ) {
         if (mode == SessionMode.CALIBRATION) {
             return Flux.just(new AgentReplyChunk("agent_start", "main-calibrate|主校准 Agent"))
                     .concatWith(mainAgent.replyWithHistory(sessionId, turnId, input, history))
                     .concatWithValues(new AgentReplyChunk("done", "本轮结束"));
         }
-        return sandboxSingleReply(history, sandboxRoundIndex).concatWithValues(new AgentReplyChunk("done", "本轮结束"));
+        return sandboxSingleReply(history, sandboxRoundIndex, sandboxDeliberationScene)
+                .concatWithValues(new AgentReplyChunk("done", "本轮结束"));
     }
 
-    private Flux<AgentReplyChunk> sandboxSingleReply(List<ConversationMessage> history, int sandboxRoundIndex) {
+    private Flux<AgentReplyChunk> sandboxSingleReply(
+            List<ConversationMessage> history,
+            int sandboxRoundIndex,
+            String sandboxDeliberationSceneRaw
+    ) {
         Optional<AgentRegistryService.RegisteredAgent> reg = registryService.firstAvailableAgent();
         List<SandboxSlot> order = new ArrayList<>();
         boolean hasThirdPartyAgents = reg.isPresent();
@@ -84,7 +90,10 @@ public class AgentOrchestrator {
             order.add(SandboxSlot.INTEGRATOR);
         }
 
-        SandboxSlot slot = order.get(Math.floorMod(sandboxRoundIndex, order.size()));
+        int cycleLen = order.size();
+        SandboxSlot slot = order.get(Math.floorMod(sandboxRoundIndex, cycleLen));
+        SandboxDeliberationScene scene = SandboxDeliberationScene.parseStored(sandboxDeliberationSceneRaw);
+        String phaseBlock = deliberationPhaseBlock(slot, sandboxRoundIndex, cycleLen);
         String latestUser = latestUserMessage(history);
         List<ConversationMessage> prior = priorHistory(history);
 
@@ -97,7 +106,7 @@ public class AgentOrchestrator {
                         aid,
                         aid,
                         null,
-                        buildThirdPartyUserMessage(prior, latestUser),
+                        buildThirdPartyUserMessage(prior, latestUser, scene, phaseBlock),
                         agent,
                         aid + " 发言结束。"
                 );
@@ -107,7 +116,7 @@ public class AgentOrchestrator {
                             "auditor",
                             "利益审计师",
                             SandboxBuiltInPrompts.AUDITOR,
-                            buildAttackerUserMessage(prior, latestUser),
+                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
                             "利益审计师 发言结束。"
                     )
@@ -115,7 +124,7 @@ public class AgentOrchestrator {
                             "auditor",
                             "利益审计师",
                             SandboxBuiltInPrompts.AUDITOR,
-                            buildAttackerUserMessage(prior, latestUser),
+                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             "利益审计师 发言结束。"
                     );
             case RISK_OFFICER -> hasThirdPartyAgents
@@ -123,7 +132,7 @@ public class AgentOrchestrator {
                             "risk_officer",
                             "风险预测官",
                             SandboxBuiltInPrompts.RISK_OFFICER,
-                            buildAttackerUserMessage(prior, latestUser),
+                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
                             "风险预测官 发言结束。"
                     )
@@ -131,7 +140,7 @@ public class AgentOrchestrator {
                             "risk_officer",
                             "风险预测官",
                             SandboxBuiltInPrompts.RISK_OFFICER,
-                            buildAttackerUserMessage(prior, latestUser),
+                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             "风险预测官 发言结束。"
                     );
             case VALUE_JUDGE -> hasThirdPartyAgents
@@ -139,7 +148,7 @@ public class AgentOrchestrator {
                             "value_judge",
                             "价值裁判",
                             SandboxBuiltInPrompts.VALUE_JUDGE,
-                            buildAttackerUserMessage(prior, latestUser),
+                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
                             "价值裁判 发言结束。"
                     )
@@ -147,7 +156,7 @@ public class AgentOrchestrator {
                             "value_judge",
                             "价值裁判",
                             SandboxBuiltInPrompts.VALUE_JUDGE,
-                            buildAttackerUserMessage(prior, latestUser),
+                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
                             "价值裁判 发言结束。"
                     );
             case INTEGRATOR -> hasThirdPartyAgents
@@ -155,7 +164,7 @@ public class AgentOrchestrator {
                             "integrator",
                             "首席整合官",
                             SandboxBuiltInPrompts.INTEGRATOR,
-                            buildIntegratorUserMessage(prior, latestUser),
+                            buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
                             reg.get(),
                             "首席整合官 发言结束。"
                     )
@@ -163,10 +172,42 @@ public class AgentOrchestrator {
                             "integrator",
                             "首席整合官",
                             SandboxBuiltInPrompts.INTEGRATOR,
-                            buildIntegratorUserMessage(prior, latestUser),
+                            buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
                             "首席整合官 发言结束。"
                     );
         };
+    }
+
+    /**
+     * 与 Agora 式协议对齐的轻量阶段：首轮循环内为「独立分析」，之后为「交叉审查」，整合官为「综合裁决」。
+     */
+    private static String deliberationPhaseBlock(SandboxSlot slot, int sandboxRoundIndex, int cycleLen) {
+        if (cycleLen <= 0) {
+            cycleLen = 4;
+        }
+        if (slot == SandboxSlot.INTEGRATOR) {
+            return """
+                    ## 本轮审议阶段：综合裁决（首席整合官）
+
+                    先用各半句点明前文中最尖锐的「正题 / 反题」张力，再按既定 Markdown 输出；博弈复盘三条须能看出与该张力对应。
+                    """;
+        }
+        int lap = sandboxRoundIndex / cycleLen;
+        if (lap == 0) {
+            return """
+                    ## 本轮审议阶段：独立分析
+
+                    - 立足用户核心议题与已知信息独立推演；前序发言仅作背景，不要点名与其他角色交锋。
+                    - 若提及他人观点，用「有一种观点是」等匿名化表述。
+                    """;
+        }
+        return """
+                ## 本轮审议阶段：交叉审查（辩证）
+
+                - 至少点名一位前序参与者（用「利益审计师」「风险预测官」「价值裁判」或外聘角色名），针对其**一条**具体论断表明赞成或反对及理由。
+                - 用 1 句话给出合题取向：在什么前提下双方可部分同时成立。
+                - 为完成论证，总字数允许在约 220 字内，仍以可验证的追问或行动收口。
+                """;
     }
 
     private Flux<AgentReplyChunk> oneSpeakerWithAgent(
@@ -283,37 +324,66 @@ public class AgentOrchestrator {
     }
 
     /**
-     * 内置/外聘共用：把「核心议题 + 本轮用户话 + 已发言观点」拼成一块，再由各角色指令收尾。
+     * 内置/外聘共用：审议场景加权 + 阶段说明 +「核心议题 + 本轮用户话 + 已发言观点」，再由各角色指令收尾。
      */
-    private String formatSandboxContextBlock(List<ConversationMessage> prior, String latestUser) {
+    private String formatSandboxContextBlock(
+            List<ConversationMessage> prior,
+            String latestUser,
+            SandboxDeliberationScene scene,
+            String phaseBlock
+    ) {
+        String routing = SandboxSceneRouting.contextBlockFor(scene).trim();
+        String phase = phaseBlock == null ? "" : phaseBlock.trim();
         String core = truncateCoreTopic(firstUserIssue(prior, latestUser));
         String latest = latestUser == null ? "" : latestUser.trim();
         String agents = formatPriorAgents(prior);
-        return "## 用户核心议题（整场沙盘须围绕此议题，禁止空泛套话）\n\n"
-                + (core.isEmpty() ? "（用户尚未说明具体议题）" : core)
-                + "\n\n## 本轮用户最新发言\n\n"
-                + (latest.isEmpty() ? "（无）" : latest)
-                + "\n\n## 前面其他参与者的观点\n\n"
-                + (agents.isEmpty() ? "（暂无）" : agents)
-                + "\n";
+        StringBuilder sb = new StringBuilder();
+        sb.append(routing).append("\n\n");
+        if (!phase.isEmpty()) {
+            sb.append(phase).append("\n\n");
+        }
+        sb.append("## 用户核心议题（整场沙盘须围绕此议题，禁止空泛套话）\n\n")
+                .append(core.isEmpty() ? "（用户尚未说明具体议题）" : core)
+                .append("\n\n## 本轮用户最新发言\n\n")
+                .append(latest.isEmpty() ? "（无）" : latest)
+                .append("\n\n## 前面其他参与者的观点\n\n")
+                .append(agents.isEmpty() ? "（暂无）" : agents)
+                .append("\n");
+        return sb.toString();
     }
 
-    private String buildAttackerUserMessage(List<ConversationMessage> prior, String latestUser) {
-        return formatSandboxContextBlock(prior, latestUser)
+    private String buildAttackerUserMessage(
+            List<ConversationMessage> prior,
+            String latestUser,
+            SandboxDeliberationScene scene,
+            String phaseBlock
+    ) {
+        return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
                 + "\n---\n\n现在轮到你了。从**你的角色立场**出发，**直指上文「用户核心议题」中的具体目标、约束、利益相关方、时间或内在矛盾**发起挑战或追问；"
-                + "可引用「前面其他参与者」的论点与之交锋。"
+                + "须遵守上文「本轮审议阶段」：独立分析轮匿名化引用；交叉审查轮必须点名交锋并尝试合题。"
                 + "禁止只输出与用户议题无关的通用管理话术。\n";
     }
 
-    private String buildIntegratorUserMessage(List<ConversationMessage> prior, String latestUser) {
-        return formatSandboxContextBlock(prior, latestUser)
+    private String buildIntegratorUserMessage(
+            List<ConversationMessage> prior,
+            String latestUser,
+            SandboxDeliberationScene scene,
+            String phaseBlock
+    ) {
+        return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
                 + "\n---\n作为首席整合官，请收束这场博弈：博弈复盘与决策沙盘表格中的「关键问题」必须**显式回扣上述用户核心议题**，"
                 + "输出你的决策沙盘报告。\n";
     }
 
-    private String buildThirdPartyUserMessage(List<ConversationMessage> prior, String latestUser) {
-        return formatSandboxContextBlock(prior, latestUser)
-                + "\n---\n请结合以上语境（尤其用户核心议题），从你的能力出发补充、质疑或给出一记「外视角」追问。\n";
+    private String buildThirdPartyUserMessage(
+            List<ConversationMessage> prior,
+            String latestUser,
+            SandboxDeliberationScene scene,
+            String phaseBlock
+    ) {
+        return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
+                + "\n---\n请结合以上语境（尤其用户核心议题），从你的能力出发补充、质疑或给出一记「外视角」追问；"
+                + "遵守上文「本轮审议阶段」对独立分析/交叉审查的约束。\n";
     }
 
     public Map<String, Object> capabilities() {

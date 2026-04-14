@@ -55,8 +55,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                                 INSERT INTO qos_conversation_session (
                                   session_id, owner_user_id, mode, status,
                                   created_at, last_activity_at, expires_at, display_title,
-                                  turn_seq, sandbox_speaker_round
-                                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                                  turn_seq, sandbox_speaker_round, sandbox_deliberation_scene
+                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
                                 ON CONFLICT (session_id) DO UPDATE SET
                                   owner_user_id = EXCLUDED.owner_user_id,
                                   mode = EXCLUDED.mode,
@@ -65,7 +65,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                                   expires_at = EXCLUDED.expires_at,
                                   display_title = EXCLUDED.display_title,
                                   turn_seq = EXCLUDED.turn_seq,
-                                  sandbox_speaker_round = EXCLUDED.sandbox_speaker_round
+                                  sandbox_speaker_round = EXCLUDED.sandbox_speaker_round,
+                                  sandbox_deliberation_scene = EXCLUDED.sandbox_deliberation_scene
                                 """,
                         session.getSessionId(),
                         session.getOwnerUserId(),
@@ -76,7 +77,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                         Timestamp.from(session.getExpiresAt()),
                         session.getDisplayTitle(),
                         session.currentTurnSeq(),
-                        session.currentSandboxSpeakerRound());
+                        session.currentSandboxSpeakerRound(),
+                        session.getSandboxDeliberationScene());
                 jdbc.update("DELETE FROM qos_conversation_message WHERE session_id = ?", session.getSessionId());
                 for (ConversationMessage m : messages) {
                     jdbc.update(
@@ -145,6 +147,7 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
         String title = rs.getString("display_title");
         long turnSeq = rs.getLong("turn_seq");
         int sandbox = rs.getInt("sandbox_speaker_round");
+        String deliberationScene = rs.getString("sandbox_deliberation_scene");
         return ConversationSession.restore(
                 sid,
                 owner != null ? owner : "",
@@ -156,7 +159,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                 title,
                 turnSeq,
                 sandbox,
-                messageCount);
+                messageCount,
+                deliberationScene);
     }
 
     private static ConversationMessage mapMessage(ResultSet rs) throws SQLException {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.questionos.backend.agent.AgentOrchestrator;
 import com.questionos.backend.agent.AgentReplyChunk;
+import com.questionos.backend.agent.SandboxSceneClassifier;
 import com.questionos.backend.domain.ConversationMessage;
 import com.questionos.backend.domain.ConversationSession;
 import com.questionos.backend.domain.MessageRole;
@@ -40,6 +41,7 @@ public class SessionService {
     private final SessionTitleService sessionTitleService;
     private final ObjectMapper objectMapper;
     private final SessionSnapshotPersistence sessionPersistence;
+    private final SandboxSceneClassifier sandboxSceneClassifier;
 
     @Value("${questionos.session.titleFromLlm:false}")
     private boolean sessionTitleFromLlm;
@@ -55,12 +57,14 @@ public class SessionService {
             AgentOrchestrator orchestrator,
             SessionTitleService sessionTitleService,
             ObjectMapper objectMapper,
-            SessionSnapshotPersistence sessionPersistence
+            SessionSnapshotPersistence sessionPersistence,
+            SandboxSceneClassifier sandboxSceneClassifier
     ) {
         this.orchestrator = orchestrator;
         this.sessionTitleService = sessionTitleService;
         this.objectMapper = objectMapper;
         this.sessionPersistence = sessionPersistence;
+        this.sandboxSceneClassifier = sandboxSceneClassifier;
     }
 
     @PostConstruct
@@ -158,16 +162,28 @@ public class SessionService {
 
         List<ConversationMessage> history = List.copyOf(messages.get(sessionId));
         int sandboxRound = session.getMode() == SessionMode.SANDBOX ? session.nextSandboxSpeakerRound() : 0;
+        if (session.getMode() == SessionMode.SANDBOX) {
+            String scene = session.getSandboxDeliberationScene();
+            if (scene == null || scene.isBlank()) {
+                String issue = firstChronologicalUserText(history);
+                String classified = sandboxSceneClassifier.classifyBlocking(issue);
+                session.setSandboxDeliberationScene(classified);
+                persistSnapshot(sessionId);
+            }
+        }
         log.info(
-                "session agent pipeline start sessionId={} turnId={} mode={} historySize={} userChars={}",
+                "session agent pipeline start sessionId={} turnId={} mode={} historySize={} userChars={} sandboxScene={}",
                 sessionId,
                 turnId,
                 session.getMode(),
                 history.size(),
-                content == null ? 0 : content.length());
+                content == null ? 0 : content.length(),
+                session.getMode() == SessionMode.SANDBOX ? String.valueOf(session.getSandboxDeliberationScene()) : "-");
         AtomicReference<StringBuilder> agentReply = new AtomicReference<>(new StringBuilder());
         AtomicReference<String> activeSpeakerId = new AtomicReference<>();
-        orchestrator.runPipeline(sessionId, turnId, content, session.getMode(), history, sandboxRound)
+        String sceneForPipeline =
+                session.getMode() == SessionMode.SANDBOX ? session.getSandboxDeliberationScene() : null;
+        orchestrator.runPipeline(sessionId, turnId, content, session.getMode(), history, sandboxRound, sceneForPipeline)
                 .doOnNext(chunk -> {
                     if ("agent_start".equals(chunk.eventType())) {
                         String c = chunk.content();
@@ -273,6 +289,19 @@ public class SessionService {
                 .event(event.eventType())
                 .data("{\"eventId\":\"" + event.eventId() + "\",\"seq\":" + event.seq() + ",\"turnId\":" + event.turnId() + ",\"payload\":" + event.payload() + "}")
                 .build();
+    }
+
+    /** 取时间序上首条用户文本，供沙盘场景分类（与核心议题钉定逻辑一致）。 */
+    private static String firstChronologicalUserText(List<ConversationMessage> history) {
+        for (ConversationMessage m : history) {
+            if (m.role() == MessageRole.USER && m.content() != null) {
+                String t = m.content().trim();
+                if (!t.isEmpty()) {
+                    return t;
+                }
+            }
+        }
+        return "";
     }
 
     private String jsonPayloadForChunkContent(String content) {

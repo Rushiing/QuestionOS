@@ -86,6 +86,7 @@ public class JsonFileSessionPersistence implements SessionSnapshotPersistence {
             data.setDisplayTitle(session.getDisplayTitle());
             data.setTurnSeq(session.currentTurnSeq());
             data.setSandboxSpeakerRound(session.currentSandboxSpeakerRound());
+            data.setSandboxDeliberationScene(session.getSandboxDeliberationScene());
             List<PersistedMessageData> out = new ArrayList<>();
             for (ConversationMessage m : messageList) {
                 PersistedMessageData pm = new PersistedMessageData();
@@ -182,7 +183,8 @@ public class JsonFileSessionPersistence implements SessionSnapshotPersistence {
                 data.getDisplayTitle(),
                 data.getTurnSeq(),
                 data.getSandboxSpeakerRound(),
-                msgs.size()
+                msgs.size(),
+                data.getSandboxDeliberationScene()
         );
         return new SessionSnapshotPersistence.LoadedSession(session, msgs);
     }

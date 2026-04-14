@@ -113,10 +113,36 @@ public class OpenClawInvokeService {
         }
         if (streamChatCompletionsDefault) {
             return invokeDefaultLlmStreamingCollect(
-                    defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1);
+                    defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1, -1);
         }
         return invokeOpenAICompatibleRaw(
-                defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1);
+                defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1, -1);
+    }
+
+    /**
+     * 非流式、小 max_tokens、短超时；用于沙盘场景分类等轻量调用。
+     */
+    public Mono<String> invokeDefaultLlmCompact(
+            String systemPrompt,
+            String userMessage,
+            String stage,
+            int maxTokens,
+            int timeoutSeconds
+    ) {
+        if (defaultLlmEndpoint == null || defaultLlmEndpoint.isBlank()) {
+            return Mono.error(new IllegalStateException(
+                    "未配置 questionos.llm.endpoint（QUESTIONOS_LLM_ENDPOINT 为空）。请先设置后重试。"
+            ));
+        }
+        return invokeOpenAICompatibleRaw(
+                defaultLlmEndpoint,
+                defaultLlmApiKey,
+                defaultLlmModel,
+                systemPrompt,
+                userMessage,
+                stage,
+                timeoutSeconds,
+                maxTokens);
     }
 
     /**
@@ -129,7 +155,8 @@ public class OpenClawInvokeService {
             String systemPrompt,
             String userMessage,
             String stage,
-            int timeoutSecondsOverride
+            int timeoutSecondsOverride,
+            int maxTokensOverride
     ) {
         String url = normalizeChatCompletionsUrl(endpoint);
         String useModel = (model == null || model.isBlank()) ? "custom-dogfooding/pitaya-03-20" : model;
@@ -139,9 +166,9 @@ public class OpenClawInvokeService {
             msgList.add(Map.of("role", "system", "content", systemPrompt));
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
-        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, true);
-        int effSec = timeoutSecondsOverride >= 0 ? timeoutSecondsOverride : defaultLlmTimeoutSeconds;
-        Duration timeout = Duration.ofSeconds(Math.max(25, effSec));
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, true, maxTokensOverride);
+        int effSec = effectiveTimeoutSeconds(timeoutSecondsOverride);
+        Duration timeout = Duration.ofSeconds(effSec);
         return Mono.fromCallable(() -> {
                     StringBuilder acc = new StringBuilder();
                     executeChatCompletionsStreamConsuming(url, body, useApiKey, useModel, stage, timeout, acc::append);
@@ -174,9 +201,9 @@ public class OpenClawInvokeService {
             msgList.add(Map.of("role", "system", "content", systemPrompt));
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
-        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, defaultLlmEndpoint, true);
-        int effSec = defaultLlmTimeoutSeconds;
-        Duration timeout = Duration.ofSeconds(Math.max(25, effSec));
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, defaultLlmEndpoint, true, -1);
+        int effSec = effectiveTimeoutSeconds(-1);
+        Duration timeout = Duration.ofSeconds(effSec);
         return Flux.<String>create(sink -> {
                     try {
                         executeChatCompletionsStreamConsuming(
@@ -204,9 +231,9 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint(), false);
+        Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint(), false, -1);
 
-        Duration agentTimeout = Duration.ofSeconds(Math.max(25, defaultLlmTimeoutSeconds));
+        Duration agentTimeout = Duration.ofSeconds(effectiveTimeoutSeconds(-1));
         return executeChatCompletions(
                 url,
                 body,
@@ -217,7 +244,8 @@ public class OpenClawInvokeService {
     }
 
     /**
-     * @param timeoutSecondsOverride &gt;= 0 时使用该秒数作为超时；&lt; 0 时使用 {@link #defaultLlmTimeoutSeconds}
+     * @param timeoutSecondsOverride &gt;= 0 时使用该秒数作为超时；&lt; 0 时使用 {@link #defaultLlmTimeoutSeconds}（且至少 25s）
+     * @param maxTokensOverride &gt; 0 时覆盖 max_tokens；&lt;= 0 时使用 {@link #defaultLlmMaxTokens}
      */
     private Mono<String> invokeOpenAICompatibleRaw(
             String endpoint,
@@ -226,7 +254,8 @@ public class OpenClawInvokeService {
             String systemPrompt,
             String userMessage,
             String stage,
-            int timeoutSecondsOverride
+            int timeoutSecondsOverride,
+            int maxTokensOverride
     ) {
         String url = normalizeChatCompletionsUrl(endpoint);
         String useModel = (model == null || model.isBlank()) ? "custom-dogfooding/pitaya-03-20" : model;
@@ -238,11 +267,19 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
-        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, false);
+        Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, false, maxTokensOverride);
 
-        int effSec = timeoutSecondsOverride >= 0 ? timeoutSecondsOverride : defaultLlmTimeoutSeconds;
-        Duration llmTimeout = Duration.ofSeconds(Math.max(25, effSec));
+        int effSec = effectiveTimeoutSeconds(timeoutSecondsOverride);
+        Duration llmTimeout = Duration.ofSeconds(effSec);
         return executeChatCompletions(url, body, useApiKey, useModel, stage, llmTimeout);
+    }
+
+    /** 显式短超时（如分类）用 override；否则主对话至少 25s。 */
+    private int effectiveTimeoutSeconds(int timeoutSecondsOverride) {
+        if (timeoutSecondsOverride >= 0) {
+            return Math.max(5, timeoutSecondsOverride);
+        }
+        return Math.max(25, defaultLlmTimeoutSeconds);
     }
 
     /**
@@ -486,14 +523,16 @@ public class OpenClawInvokeService {
             String model,
             List<Map<String, String>> msgList,
             String endpointHint,
-            boolean stream
+            boolean stream,
+            int maxTokensOverride
     ) {
         Map<String, Object> body = new HashMap<>();
         body.put("model", model);
         body.put("messages", msgList);
         body.put("stream", stream);
-        if (defaultLlmMaxTokens > 0) {
-            body.put("max_tokens", defaultLlmMaxTokens);
+        int mt = maxTokensOverride > 0 ? maxTokensOverride : defaultLlmMaxTokens;
+        if (mt > 0) {
+            body.put("max_tokens", mt);
         }
         if (shouldAttachDashscopeStyleExtras(endpointHint)) {
             Map<String, Object> extra = new HashMap<>();

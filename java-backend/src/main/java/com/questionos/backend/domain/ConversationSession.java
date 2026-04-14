@@ -18,6 +18,8 @@ public class ConversationSession {
     private final AtomicLong turnSeq;
     /** 沙盘模式：用户每发一条消息，轮转一位 agent 发言（一问一答） */
     private final AtomicInteger sandboxSpeakerRound;
+    /** 沙盘：首轮对用户议题 LLM 分类后的审议场景，整场复用；见 {@link com.questionos.backend.agent.SandboxDeliberationScene} */
+    private volatile String sandboxDeliberationScene;
 
     public ConversationSession(String sessionId, String ownerUserId, SessionMode mode, Instant createdAt, Instant expiresAt) {
         this.sessionId = sessionId;
@@ -46,7 +48,8 @@ public class ConversationSession {
             String displayTitle,
             long turnSeqSnapshot,
             int sandboxSpeakerRoundSnapshot,
-            long restoredMessageCount
+            long restoredMessageCount,
+            String sandboxDeliberationScene
     ) {
         ConversationSession s = new ConversationSession(sessionId, ownerUserId, mode, createdAt, expiresAt);
         s.status = status;
@@ -56,6 +59,9 @@ public class ConversationSession {
         s.turnSeq.set(turnSeqSnapshot);
         s.sandboxSpeakerRound.set(sandboxSpeakerRoundSnapshot);
         s.messageCount.set(Math.max(0, restoredMessageCount));
+        if (sandboxDeliberationScene != null && !sandboxDeliberationScene.isBlank()) {
+            s.sandboxDeliberationScene = sandboxDeliberationScene.trim();
+        }
         return s;
     }
 
@@ -126,5 +132,13 @@ public class ConversationSession {
 
     public void setDisplayTitle(String displayTitle) {
         this.displayTitle = displayTitle;
+    }
+
+    public String getSandboxDeliberationScene() {
+        return sandboxDeliberationScene;
+    }
+
+    public void setSandboxDeliberationScene(String sandboxDeliberationScene) {
+        this.sandboxDeliberationScene = sandboxDeliberationScene == null ? null : sandboxDeliberationScene.trim();
     }
 }

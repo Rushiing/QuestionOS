@@ -21,6 +21,8 @@ public class PersistedSessionData {
     private String displayTitle;
     private long turnSeq;
     private int sandboxSpeakerRound;
+    /** 沙盘审议场景，见 {@link com.questionos.backend.agent.SandboxDeliberationScene} */
+    private String sandboxDeliberationScene;
     private List<PersistedMessageData> messages = new ArrayList<>();
 
     public String getSessionId() {
@@ -101,6 +103,14 @@ public class PersistedSessionData {
 
     public void setSandboxSpeakerRound(int sandboxSpeakerRound) {
         this.sandboxSpeakerRound = sandboxSpeakerRound;
+    }
+
+    public String getSandboxDeliberationScene() {
+        return sandboxDeliberationScene;
+    }
+
+    public void setSandboxDeliberationScene(String sandboxDeliberationScene) {
+        this.sandboxDeliberationScene = sandboxDeliberationScene;
     }
 
     public List<PersistedMessageData> getMessages() {
