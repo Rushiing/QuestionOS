@@ -73,13 +73,19 @@ export const streamSse = async (options: StreamSseOptions): Promise<void> => {
         const lines = block.split(/\r?\n/);
         let eventType = '';
         let eventId = '';
-        let dataRaw = '';
+        const dataParts: string[] = [];
 
         for (const line of lines) {
           if (line.startsWith('event:')) eventType = line.slice(6).trim();
-          if (line.startsWith('id:')) eventId = line.slice(3).trim();
-          if (line.startsWith('data:')) dataRaw = line.slice(5).trim();
+          else if (line.startsWith('id:')) eventId = line.slice(3).trim();
+          else if (line.startsWith('data:')) {
+            // WHATWG HTML: multiple `data:` lines are joined with U+000A (may be split by proxies).
+            const rest = line.slice(5);
+            dataParts.push(rest.startsWith(' ') ? rest.slice(1) : rest);
+          }
         }
+
+        const dataRaw = dataParts.join('\n').trim();
 
         if (!eventType || !dataRaw || eventType === 'heartbeat') continue;
         options.onDebug?.(`[sse] event ${eventType} #${eventId || '-'}`);

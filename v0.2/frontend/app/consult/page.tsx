@@ -106,6 +106,19 @@ const consultAgentMarkdownComponents: Components = {
   ),
 };
 
+/** 审议路由卡片：强调首行「### …审议路由」对应的 h3，避免与正文同字号 */
+const sandboxRouteMarkdownComponents: Components = {
+  ...consultAgentMarkdownComponents,
+  h3: ({ node, children, ...props }) => (
+    <h3
+      className="mt-0 mb-3 text-xl font-bold tracking-tight text-teal-800 border-b border-teal-300/60 pb-2.5"
+      {...props}
+    >
+      {children}
+    </h3>
+  ),
+};
+
 function agentMarkdownSource(msg: Message): string {
   const raw = msg.content || (msg.is_streaming ? '...' : '');
   if (raw === '...') return raw;
@@ -1122,11 +1135,8 @@ export default function ConsultPage() {
                       </div>
                     ) : msg.variant === 'sandbox_route' ? (
                       <div className="rounded-2xl border-2 border-teal-300/70 bg-gradient-to-br from-teal-50 via-white to-cyan-50 px-4 py-3 shadow-sm text-slate-800">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-teal-700 mb-2">
-                          审议路由
-                        </div>
                         <div className="max-w-none text-[0.9375rem] leading-relaxed markdown-content consult-agent-md">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={consultAgentMarkdownComponents}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={sandboxRouteMarkdownComponents}>
                             {msg.content}
                           </ReactMarkdown>
                         </div>
