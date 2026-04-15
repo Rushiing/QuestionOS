@@ -42,19 +42,6 @@ public class SandboxSceneClassifier {
             - 若出现「辞职创业」等跨域，优先人生/关系/心理主轴，而非商业/技术表层。
             """;
 
-    private static final String FORCE_ROOM_SYSTEM = """
-            你是「Agora 强制入室路由器」。
-            任务：必须在六个审议室里选一个最合适主轴，禁止输出 GENERAL。
-            只输出一行合法 JSON，不要解释：
-            {"scene":"BUSINESS","confidence":"LOW"}
-
-            scene 只能是：
-            BUSINESS, ENGINEERING, LIFE_CROSSROADS, RELATIONSHIP, PSYCHOLOGY, CREATIVE
-
-            若信息不足，也要按「当前最可讨论的主轴」做暂定入室。
-            若跨域，优先生命/关系/心理主轴，再考虑商业/技术。
-            """;
-
     private final OpenClawInvokeService invokeService;
     private final ObjectMapper objectMapper;
 
@@ -68,24 +55,10 @@ public class SandboxSceneClassifier {
     }
 
     /**
-     * 用于「步骤②前」的强制入室：返回结果保证不是 GENERAL。
+     * 与 {@link #classifyDetailed(String)} 等价；保留方法名供旧调用点迁移，不再做「强制非 GENERAL」改场。
      */
     public SandboxClassificationResult classifyDetailedNoGeneral(String issuePlainText) {
-        SandboxClassificationResult first = classifyDetailed(issuePlainText);
-        if (first.scene() != SandboxDeliberationScene.GENERAL) {
-            return first;
-        }
-        String trimmed = issuePlainText == null ? "" : issuePlainText.trim();
-        String snippet = trimmed.length() <= ISSUE_MAX ? trimmed : trimmed.substring(0, ISSUE_MAX) + "\n…（已截断）";
-        SandboxDeliberationScene forced = forceRoom(snippet, "{\"scene\":\"GENERAL\",\"confidence\":\"LOW\"}");
-        if (forced != null && forced != SandboxDeliberationScene.GENERAL) {
-            return new SandboxClassificationResult(forced, first.normalizedIssue(), "LOW", true);
-        }
-        SandboxDeliberationScene fb = keywordFallback(trimmed);
-        if (fb == SandboxDeliberationScene.GENERAL) {
-            fb = SandboxDeliberationScene.BUSINESS;
-        }
-        return new SandboxClassificationResult(fb, first.normalizedIssue(), "LOW", true);
+        return classifyDetailed(issuePlainText);
     }
 
     /**
@@ -117,17 +90,13 @@ public class SandboxSceneClassifier {
             if (fromLlm != null) {
                 String norm = extractNormalizedIssue(root, trimmed);
                 String conf = extractConfidence(root, raw);
-                boolean needForceRoom = fromLlm == SandboxDeliberationScene.GENERAL || isLowConfidence(raw);
-                if (!needForceRoom) {
+                boolean ambiguous = fromLlm == SandboxDeliberationScene.GENERAL || isLowConfidence(raw);
+                if (!ambiguous) {
                     log.info("sandbox scene classified by llm scene={} confidence={}", fromLlm, conf);
                     return new SandboxClassificationResult(fromLlm, norm, conf, false);
                 }
-                SandboxDeliberationScene forced = forceRoom(snippet, raw);
-                if (forced != null) {
-                    log.info("sandbox scene forced into room scene={} from={}", forced, fromLlm);
-                    return new SandboxClassificationResult(forced, norm, "LOW", true);
-                }
-                log.info("sandbox scene classified by llm scene={} confidence=LOW(no-force-result)", fromLlm);
+                // 信息偏少或模型自评偏低：不再二次改场「强制入室」，交由步骤①清晰度门槛与 LOW 分支处理
+                log.info("sandbox scene classified by llm scene={} confidence=LOW(stay-step1-if-needed)", fromLlm);
                 return new SandboxClassificationResult(fromLlm, norm, "LOW", false);
             }
         } catch (Exception e) {
@@ -222,27 +191,6 @@ public class SandboxSceneClassifier {
         }
         String upper = raw.toUpperCase(Locale.ROOT);
         return upper.contains("\"CONFIDENCE\":\"LOW\"") || upper.contains("\"CONFIDENCE\": \"LOW\"");
-    }
-
-    private SandboxDeliberationScene forceRoom(String snippet, String firstPassRaw) {
-        try {
-            String raw = invokeService
-                    .invokeDefaultLlmCompact(
-                            FORCE_ROOM_SYSTEM,
-                            "原始用户议题：\n" + snippet + "\n\n初次分诊结果：\n" + String.valueOf(firstPassRaw),
-                            "sandbox:scene-force-room",
-                            72,
-                            20)
-                    .block(Duration.ofSeconds(18));
-            SandboxDeliberationScene v = parseSceneJson(raw);
-            if (v != null && v != SandboxDeliberationScene.GENERAL) {
-                return v;
-            }
-        } catch (Exception e) {
-            log.warn("sandbox scene force-room failed: {}", e.toString());
-        }
-        SandboxDeliberationScene fb = keywordFallback(snippet);
-        return fb == SandboxDeliberationScene.GENERAL ? null : fb;
     }
 
     /** Agora 式信号词的轻量兜底（仅当 LLM 不可用时）。 */

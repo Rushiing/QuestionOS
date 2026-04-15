@@ -22,6 +22,16 @@ interface Agent {
   role: string;
 }
 
+/** 与后端 Agora 六室一致（不含 GENERAL 统筹兜底，避免与「六室」展示混淆） */
+const SANDBOX_DELIBERATION_ROOMS: Agent[] = [
+  { id: 'BUSINESS', name: '集市', avatar: '📈', description: '商业与战略', role: 'sandbox' },
+  { id: 'ENGINEERING', name: '锻造坊', avatar: '⚙️', description: '工程与架构', role: 'sandbox' },
+  { id: 'LIFE_CROSSROADS', name: '神谕所', avatar: '🔮', description: '人生十字路口与存在抉择', role: 'sandbox' },
+  { id: 'RELATIONSHIP', name: '火炉边', avatar: '🔥', description: '关系与家庭', role: 'sandbox' },
+  { id: 'PSYCHOLOGY', name: '诊疗室', avatar: '🩺', description: '心理韧性与行为', role: 'sandbox' },
+  { id: 'CREATIVE', name: '工作坊', avatar: '✍️', description: '创作与表达', role: 'sandbox' },
+];
+
 interface Message {
   id: string;
   role: 'user' | 'agent' | 'system';
@@ -135,11 +145,7 @@ const sandboxClassifyMarkdownComponents: Components = {
 function agentMarkdownSource(msg: Message): string {
   const raw = msg.content || (msg.is_streaming ? '...' : '');
   if (raw === '...') return raw;
-  const isIntegrator =
-    msg.role === 'agent' &&
-    (msg.agent_id === 'integrator' ||
-      msg.agent_name === '马可·奥勒留' ||
-      msg.agent_name === '首席整合官');
+  const isIntegrator = msg.role === 'agent' && msg.agent_id === 'integrator';
   if (isIntegrator) {
     return normalizeIntegratorExpertBullets(raw);
   }
@@ -196,10 +202,7 @@ export default function ConsultPage() {
   const isLoggedIn = !!user;
 
   const defaultAgentList: Agent[] = [
-    { id: 'auditor', name: '苏格拉底', avatar: '🏺', description: '连续诘问前提，逼近核心命题', role: 'sandbox' },
-    { id: 'risk_officer', name: '尼采', avatar: '⚡', description: '直面风险与代价，拆解自我安慰', role: 'sandbox' },
-    { id: 'value_judge', name: '卡尼曼', avatar: '🧠', description: '识别认知偏差，校准判断质量', role: 'sandbox' },
-    { id: 'integrator', name: '马可·奥勒留', avatar: '🛡️', description: '收束冲突，沉淀可执行决策', role: 'sandbox' },
+    ...SANDBOX_DELIBERATION_ROOMS,
     { id: 'third-party-adapter', name: '外聘 Agent', avatar: '🧩', description: 'OpenClaw 等外部 Agent', role: 'third-party' },
   ];
 
@@ -229,16 +232,16 @@ export default function ConsultPage() {
 
   const agentMeta = (agentId: string) => {
     if (agentId === 'auditor') {
-      return { name: '苏格拉底', avatar: '🏺' };
+      return { name: '概念席', avatar: '📐' };
     }
     if (agentId === 'risk_officer') {
-      return { name: '尼采', avatar: '⚡' };
+      return { name: '代价席', avatar: '⚡' };
     }
     if (agentId === 'value_judge') {
-      return { name: '卡尼曼', avatar: '🧠' };
+      return { name: '校准席', avatar: '🧭' };
     }
     if (agentId === 'integrator') {
-      return { name: '马可·奥勒留', avatar: '🛡️' };
+      return { name: '综合席', avatar: '🛡️' };
     }
     if (agentId === 'third-party-adapter') {
       const inst = instances[0];
@@ -848,16 +851,15 @@ export default function ConsultPage() {
               ) : (
                 <div className="space-y-8 pt-1">
                   <div>
-                    <p className="text-center text-xs text-slate-500 mb-3 tracking-wide">内置推演团队</p>
-                    <div className="flex justify-center gap-6 sm:gap-8 flex-wrap">
-                      {agents
-                        .filter((a) => a.role === 'sandbox')
-                        .map((agent) => (
-                          <div key={agent.id} className="flex flex-col items-center min-w-[4.5rem]">
+                    <p className="text-center text-xs text-slate-500 mb-3 tracking-wide">六间审议室</p>
+                    <div className="flex justify-center gap-5 sm:gap-6 flex-wrap">
+                      {SANDBOX_DELIBERATION_ROOMS.map((room) => (
+                          <div key={room.id} className="flex flex-col items-center min-w-[4.5rem] max-w-[5.5rem]">
                             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-3xl mb-2">
-                              {agent.avatar}
+                              {room.avatar}
                             </div>
-                            <span className="text-sm font-medium text-slate-700 text-center leading-tight">{agent.name}</span>
+                            <span className="text-sm font-medium text-slate-700 text-center leading-tight">{room.name}</span>
+                            <span className="text-[10px] text-slate-500 text-center leading-snug mt-0.5">{room.description}</span>
                           </div>
                         ))}
                     </div>

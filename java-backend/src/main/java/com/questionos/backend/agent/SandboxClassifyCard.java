@@ -14,6 +14,28 @@ public final class SandboxClassifyCard {
         return markdown(r, true);
     }
 
+    /**
+     * 议题尚未形成可分诊的「决策对象」：不调用分诊模型、不写入审议室、不进入步骤②。
+     * 与 {@link #markdownInvalidInput(String)} 区分：此处允许有字，但多为敷衍/缺口过大。
+     */
+    public static String markdownIssueNotYetConcrete(String combinedIssue) {
+        String shown = combinedIssue == null ? "" : combinedIssue.trim().replaceAll("\\s+", " ");
+        if (shown.length() > 120) {
+            shown = shown.substring(0, 120) + "…";
+        }
+        if (shown.isBlank()) {
+            shown = "（空）";
+        }
+        return "### \uD83D\uDD0E 议题确认与入室（步骤 ①）\n\n"
+                + "**当前信息仍不足以可靠分诊，暂不进入步骤②。**\n\n"
+                + "**已读到的输入汇总**（可能含多句）：\n\n> "
+                + shown
+                + "\n\n请用**至少一两句完整中文**说明：你在**决策什么**、**主要顾虑或约束**、以及**时间边界**（若适用）。"
+                + "单字敷衍、纯附和或「不知道」类回答无法入室。\n\n"
+                + "---\n\n"
+                + "当前仍停在步骤①；补充清楚后，才会展示 **审议路由（步骤 ②）** 并进入多角色发言。\n";
+    }
+
     /** 输入噪声拦截卡：在步骤①先让用户补足最小可分诊信息。 */
     public static String markdownInvalidInput(String rawInput) {
         String shown = rawInput == null ? "" : rawInput.trim();
@@ -44,14 +66,9 @@ public final class SandboxClassifyCard {
                 : r.normalizedIssue().trim();
         String confLabel = switch (r.confidence() == null ? "" : r.confidence().toUpperCase()) {
             case "HIGH" -> "高";
-            case "LOW" -> r.forcedSecondary() ? "中（已二次校准入室）" : "中";
+            case "LOW" -> "中";
             default -> "—";
         };
-        String forcedNote = r.forcedSecondary()
-                ? "\n\n> 初次分诊偏泛或信心偏低，已启动**强制入室**，将议题暂钉在 **"
-                        + roomTitle
-                        + "** 主轴上继续；若与你的心意不符，可用一句话纠正「我到底在决策什么」。\n"
-                : "";
         String interactionBlock = needClarification
                 ? "\n\n### 💬 需要你补一句（继续步骤 ①）\n\n"
                 + "请用一句话补充：**你这次最想保住什么、最怕失去什么、以及时间约束**。补充后我再正式入室并进入步骤②。\n"
@@ -68,7 +85,6 @@ public final class SandboxClassifyCard {
                 + "）\n\n"
                 + "**分诊信心**："
                 + confLabel
-                + forcedNote
                 + interactionBlock
                 + "\n---\n\n"
                 + (needClarification

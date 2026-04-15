@@ -22,18 +22,6 @@ import java.util.Optional;
 public class AgentOrchestrator {
     /** 首轮用户议题写入 prompt 的上限，避免撑爆上下文 */
     private static final int SANDBOX_CORE_TOPIC_MAX_CHARS = 1200;
-    private static final String AUDITOR_NAME = "苏格拉底";
-    private static final String RISK_OFFICER_NAME = "尼采";
-    private static final String VALUE_JUDGE_NAME = "卡尼曼";
-    private static final String INTEGRATOR_NAME = "马可·奥勒留";
-
-    private enum SandboxSlot {
-        THIRD_PARTY,
-        AUDITOR,
-        RISK_OFFICER,
-        VALUE_JUDGE,
-        INTEGRATOR
-    }
 
     private final MainCalibrateAgent mainAgent;
     private final AgentRegistryService registryService;
@@ -73,113 +61,105 @@ public class AgentOrchestrator {
             String sandboxDeliberationSceneRaw
     ) {
         Optional<AgentRegistryService.RegisteredAgent> reg = registryService.firstAvailableAgent();
-        List<SandboxSlot> order = new ArrayList<>();
         boolean hasThirdPartyAgents = reg.isPresent();
-
-        // 你的新规则：
-        // - 未接入任何三方 agents：只运行内置四角色
-        // - 已接入三方 agents：内置四角色 + 三方 slot 轮转
-        if (hasThirdPartyAgents) {
-            // 三方 slot 出现两次，提高权重；其余内置各一次
-            order.add(SandboxSlot.THIRD_PARTY);
-            order.add(SandboxSlot.AUDITOR);
-            order.add(SandboxSlot.THIRD_PARTY);
-            order.add(SandboxSlot.RISK_OFFICER);
-            order.add(SandboxSlot.VALUE_JUDGE);
-            order.add(SandboxSlot.INTEGRATOR);
-        } else {
-            order.add(SandboxSlot.AUDITOR);
-            order.add(SandboxSlot.RISK_OFFICER);
-            order.add(SandboxSlot.VALUE_JUDGE);
-            order.add(SandboxSlot.INTEGRATOR);
-        }
-
-        int cycleLen = order.size();
-        SandboxSlot slot = order.get(Math.floorMod(sandboxRoundIndex, cycleLen));
         SandboxDeliberationScene scene = SandboxDeliberationScene.parseStored(sandboxDeliberationSceneRaw);
+        List<SandboxAgoraTurnPlan.BuiltinTurn> plan = SandboxAgoraTurnPlan.fourBuiltin(scene);
+
+        record Step(boolean thirdParty, int builtinIdx) {}
+        List<Step> steps = new ArrayList<>();
+        if (hasThirdPartyAgents) {
+            steps.add(new Step(true, -1));
+            steps.add(new Step(false, 0));
+            steps.add(new Step(true, -1));
+            steps.add(new Step(false, 1));
+            steps.add(new Step(false, 2));
+            steps.add(new Step(false, 3));
+        } else {
+            steps.add(new Step(false, 0));
+            steps.add(new Step(false, 1));
+            steps.add(new Step(false, 2));
+            steps.add(new Step(false, 3));
+        }
+        int cycleLen = steps.size();
+        Step current = steps.get(Math.floorMod(sandboxRoundIndex, cycleLen));
         String latestUser = latestUserMessage(history);
         List<ConversationMessage> prior = priorHistory(history);
-        String phaseBlock = deliberationPhaseBlock(slot, sandboxRoundIndex, cycleLen, prior);
 
-        return switch (slot) {
-            case THIRD_PARTY -> {
-                // slot 不会在 hasThirdPartyAgents=false 时出现
-                AgentRegistryService.RegisteredAgent agent = reg.get();
-                String aid = agent.agentId();
-                yield oneSpeakerWithAgent(
-                        aid,
-                        aid,
-                        null,
-                        buildThirdPartyUserMessage(prior, latestUser, scene, phaseBlock),
-                        agent,
-                        aid + " 发言结束。"
+        if (current.thirdParty()) {
+            AgentRegistryService.RegisteredAgent agent = reg.get();
+            String aid = agent.agentId();
+            String phaseBlock = deliberationPhaseBlock(SandboxSlot.THIRD_PARTY, sandboxRoundIndex, cycleLen, prior);
+            return oneSpeakerWithAgent(
+                    aid,
+                    aid,
+                    null,
+                    buildThirdPartyUserMessage(prior, latestUser, scene, phaseBlock),
+                    agent,
+                    aid + " 发言结束。"
+            );
+        }
+        SandboxAgoraTurnPlan.BuiltinTurn b = plan.get(current.builtinIdx());
+        String phaseBlock = deliberationPhaseBlock(b.slot(), sandboxRoundIndex, cycleLen, prior);
+        String speakerId = speakerIdForSlot(b.slot());
+        String sys = augmentBuiltinSystemPrompt(b);
+        String done = b.displayName() + " 发言结束。";
+        if (b.slot() == SandboxSlot.INTEGRATOR) {
+            if (hasThirdPartyAgents) {
+                return oneSpeakerWithAgent(
+                        speakerId,
+                        b.displayName(),
+                        sys,
+                        buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
+                        reg.get(),
+                        done
                 );
             }
-            case AUDITOR -> hasThirdPartyAgents
-                    ? oneSpeakerWithAgent(
-                            "auditor",
-                            AUDITOR_NAME,
-                            SandboxBuiltInPrompts.AUDITOR,
-                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            reg.get(),
-                            AUDITOR_NAME + " 发言结束。"
-                    )
-                    : oneSpeakerWithDefaultLlm(
-                            "auditor",
-                            AUDITOR_NAME,
-                            SandboxBuiltInPrompts.AUDITOR,
-                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            AUDITOR_NAME + " 发言结束。"
-                    );
-            case RISK_OFFICER -> hasThirdPartyAgents
-                    ? oneSpeakerWithAgent(
-                            "risk_officer",
-                            RISK_OFFICER_NAME,
-                            SandboxBuiltInPrompts.RISK_OFFICER,
-                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            reg.get(),
-                            RISK_OFFICER_NAME + " 发言结束。"
-                    )
-                    : oneSpeakerWithDefaultLlm(
-                            "risk_officer",
-                            RISK_OFFICER_NAME,
-                            SandboxBuiltInPrompts.RISK_OFFICER,
-                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            RISK_OFFICER_NAME + " 发言结束。"
-                    );
-            case VALUE_JUDGE -> hasThirdPartyAgents
-                    ? oneSpeakerWithAgent(
-                            "value_judge",
-                            VALUE_JUDGE_NAME,
-                            SandboxBuiltInPrompts.VALUE_JUDGE,
-                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            reg.get(),
-                            VALUE_JUDGE_NAME + " 发言结束。"
-                    )
-                    : oneSpeakerWithDefaultLlm(
-                            "value_judge",
-                            VALUE_JUDGE_NAME,
-                            SandboxBuiltInPrompts.VALUE_JUDGE,
-                            buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                            VALUE_JUDGE_NAME + " 发言结束。"
-                    );
-            case INTEGRATOR -> hasThirdPartyAgents
-                    ? oneSpeakerWithAgent(
-                            "integrator",
-                            INTEGRATOR_NAME,
-                            SandboxBuiltInPrompts.INTEGRATOR,
-                            buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
-                            reg.get(),
-                            INTEGRATOR_NAME + " 发言结束。"
-                    )
-                    : oneSpeakerWithDefaultLlm(
-                            "integrator",
-                            INTEGRATOR_NAME,
-                            SandboxBuiltInPrompts.INTEGRATOR,
-                            buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
-                            INTEGRATOR_NAME + " 发言结束。"
-                    );
+            return oneSpeakerWithDefaultLlm(
+                    speakerId,
+                    b.displayName(),
+                    sys,
+                    buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
+                    done
+            );
+        }
+        if (hasThirdPartyAgents) {
+            return oneSpeakerWithAgent(
+                    speakerId,
+                    b.displayName(),
+                    sys,
+                    buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
+                    reg.get(),
+                    done
+            );
+        }
+        return oneSpeakerWithDefaultLlm(
+                speakerId,
+                b.displayName(),
+                sys,
+                buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
+                done
+        );
+    }
+
+    private static String speakerIdForSlot(SandboxSlot slot) {
+        return switch (slot) {
+            case AUDITOR -> "auditor";
+            case RISK_OFFICER -> "risk_officer";
+            case VALUE_JUDGE -> "value_judge";
+            case INTEGRATOR -> "integrator";
+            default -> "auditor";
         };
+    }
+
+    private static String augmentBuiltinSystemPrompt(SandboxAgoraTurnPlan.BuiltinTurn b) {
+        String base = switch (b.slot()) {
+            case AUDITOR -> SandboxBuiltInPrompts.AUDITOR;
+            case RISK_OFFICER -> SandboxBuiltInPrompts.RISK_OFFICER;
+            case VALUE_JUDGE -> SandboxBuiltInPrompts.VALUE_JUDGE;
+            case INTEGRATOR -> SandboxBuiltInPrompts.INTEGRATOR;
+            default -> SandboxBuiltInPrompts.AUDITOR;
+        };
+        return b.personaPrefix().trim() + "\n\n" + base;
     }
 
     /**
@@ -215,7 +195,7 @@ public class AgentOrchestrator {
         return """
                 ## 本轮审议阶段：交叉审查（辩证）
 
-                - 至少点名一位前序参与者（如「苏格拉底」「尼采」「卡尼曼」「马可·奥勒留」或外聘角色名），针对其**一条**具体论断表明赞成或反对及理由。
+                - 至少点名一位前序参与者（用其在界面上的**展示名/外聘 Agent 名**），针对其**一条**具体论断表明赞成或反对及理由。
                 - 用 1 句话给出合题取向：在什么前提下双方可部分同时成立。
                 - 为完成论证，总字数允许在约 220 字内，仍以可验证的追问或行动收口。
                 """;
@@ -299,13 +279,11 @@ public class AgentOrchestrator {
         return history;
     }
 
-    private String displayNameForSpeakerId(String id) {
+    private String displayNameForSpeakerId(String id, SandboxDeliberationScene scene) {
         if (id == null) return "助手";
         return switch (id) {
-            case "auditor" -> AUDITOR_NAME;
-            case "risk_officer" -> RISK_OFFICER_NAME;
-            case "value_judge" -> VALUE_JUDGE_NAME;
-            case "integrator" -> INTEGRATOR_NAME;
+            case "auditor", "risk_officer", "value_judge", "integrator" ->
+                    SandboxAgoraTurnPlan.displayNameForSpeaker(scene, id);
             case "sandbox-route" -> "审议路由";
             case "sandbox-classify" -> "议题分诊";
             case "third-party-adapter" -> "外聘 Agent";
@@ -313,7 +291,7 @@ public class AgentOrchestrator {
         };
     }
 
-    private String formatPriorAgents(List<ConversationMessage> prior) {
+    private String formatPriorAgents(List<ConversationMessage> prior, SandboxDeliberationScene scene) {
         StringBuilder sb = new StringBuilder();
         for (ConversationMessage m : prior) {
             if (m.role() != MessageRole.AGENT || m.content() == null || m.content().isBlank()) {
@@ -322,7 +300,7 @@ public class AgentOrchestrator {
             if ("sandbox-route".equals(m.agentSpeakerId()) || "sandbox-classify".equals(m.agentSpeakerId())) {
                 continue;
             }
-            String label = displayNameForSpeakerId(m.agentSpeakerId());
+            String label = displayNameForSpeakerId(m.agentSpeakerId(), scene);
             sb.append("【").append(label).append("】：").append(m.content().trim()).append("\n\n");
         }
         return sb.toString().trim();
@@ -366,7 +344,7 @@ public class AgentOrchestrator {
         String phase = phaseBlock == null ? "" : phaseBlock.trim();
         String core = truncateCoreTopic(firstUserIssue(prior, latestUser));
         String latest = latestUser == null ? "" : latestUser.trim();
-        String agents = formatPriorAgents(prior);
+        String agents = formatPriorAgents(prior, scene);
         StringBuilder sb = new StringBuilder();
         sb.append(routing).append("\n\n");
         if (!phase.isEmpty()) {

@@ -197,13 +197,31 @@ public class SessionService {
                             sessionId, turnId, safeLogSnippet(content));
                     return Optional.of(userMessage.messageId());
                 }
-                boolean hadPriorClassify = sessionAlreadyHasSandboxClassify(messages.get(sessionId));
-                classificationSnapshot = hadPriorClassify
-                        // 步骤①已完成补充后，进入步骤②前禁止再落到 GENERAL。
-                        ? sandboxSceneClassifier.classifyDetailedNoGeneral(issue)
-                        : sandboxSceneClassifier.classifyDetailed(issue);
-                boolean lowConfidence = "LOW".equalsIgnoreCase(classificationSnapshot.confidence()) || classificationSnapshot.forcedSecondary();
-                needClarificationFirst = lowConfidence && !hadPriorClassify;
+                if (!isIssueClearForStep2(issue)) {
+                    String blockMd = SandboxClassifyCard.markdownIssueNotYetConcrete(issue);
+                    appendMessage(session, MessageRole.AGENT, blockMd, turnId, "sandbox-classify");
+                    Map<String, Object> classifyPayload = new LinkedHashMap<>();
+                    classifyPayload.put("content", blockMd);
+                    classifyPayload.put("scene", "");
+                    classifyPayload.put("roomTitle", "");
+                    classifyPayload.put("roomSubtitle", "");
+                    classifyPayload.put("normalizedIssue", "");
+                    classifyPayload.put("confidence", "LOW");
+                    classifyPayload.put("forcedSecondary", false);
+                    classifyPayload.put("requiresClarification", true);
+                    classifyPayload.put("invalidInput", false);
+                    classifyPayload.put("issueNotConcrete", true);
+                    classifyPayload.put("step", 1);
+                    publishEvent(sessionId, turnId, "sandbox_classify", jsonPayload(classifyPayload));
+                    persistSnapshot(sessionId);
+                    publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + "}");
+                    log.info("sandbox classify blocked issue-not-concrete sessionId={} turnId={} issue='{}'",
+                            sessionId, turnId, safeLogSnippet(issue));
+                    return Optional.of(userMessage.messageId());
+                }
+                classificationSnapshot = sandboxSceneClassifier.classifyDetailed(issue);
+                boolean lowConfidence = "LOW".equalsIgnoreCase(classificationSnapshot.confidence());
+                needClarificationFirst = lowConfidence;
                 if (!needClarificationFirst) {
                     session.setSandboxDeliberationScene(classificationSnapshot.scene().name());
                     persistSnapshot(sessionId);
@@ -438,12 +456,10 @@ public class SessionService {
         return "";
     }
 
-    /**
-     * 步骤①分诊用输入：优先拼接前两条用户句，确保「补充一句」后可二次入室而非一直盯首句。
-     */
+    /** 步骤①分诊用输入：按时间拼接本会话全部用户句（有总长度上限），避免只看首句或两句。 */
     private static String classifyIssueText(List<ConversationMessage> history) {
+        final int maxChars = 2000;
         StringBuilder sb = new StringBuilder();
-        int n = 0;
         for (ConversationMessage m : history) {
             if (m.role() != MessageRole.USER || m.content() == null) {
                 continue;
@@ -456,13 +472,75 @@ public class SessionService {
                 sb.append("\n");
             }
             sb.append(t);
-            n++;
-            if (n >= 2) {
+            if (sb.length() >= maxChars) {
                 break;
             }
         }
         String combined = sb.toString().trim();
         return combined.isEmpty() ? firstChronologicalUserText(history) : combined;
+    }
+
+    /**
+     * 是否已具备进入分诊/步骤②的最小「决策议题」信息量（仍可能被判 LOW，但不会是敷衍拼接）。
+     */
+    private static boolean isIssueClearForStep2(String issue) {
+        if (issue == null || issue.isBlank()) {
+            return false;
+        }
+        if (isMeaninglessIssue(issue)) {
+            return false;
+        }
+        String stripped = stripSandboxTopicFillers(issue);
+        if (stripped.isBlank()) {
+            return false;
+        }
+        int meaningful = countMeaningfulChars(stripped);
+        if (meaningful < 8) {
+            return false;
+        }
+        // 英文过短且无结构时，仍视为不清晰
+        boolean hasHan = stripped.matches(".*[\\u4e00-\\u9fff].*");
+        if (!hasHan) {
+            String[] words = stripped.split("\\s+");
+            int w = 0;
+            for (String x : words) {
+                if (x.matches("[a-zA-Z0-9].*")) {
+                    w++;
+                }
+            }
+            return w >= 5;
+        }
+        return true;
+    }
+
+    private static String stripSandboxTopicFillers(String raw) {
+        String t = raw.replaceAll("\\s+", " ").trim();
+        String[] fillers = {
+                "对对对", "对对", "不知道", "不清楚", "不了解", "嗯嗯嗯", "嗯嗯", "嗯", "啊", "哦", "呃",
+                "是的是的", "是的", "可以", "好的", "好吧", "随便", "都行", "无所谓", "没想法", "没啥",
+                "没有啊", "没有", "无", "再看看", "不好说", "不太清楚", "说不上来", "不晓得", "不懂",
+                "嗯啊", "哈哈哈", "哈哈", "呵呵"
+        };
+        for (String f : fillers) {
+            t = t.replace(f, " ");
+        }
+        t = t.replaceAll("(?i)\\b(ok|yes|no|nope|idk|dunno|maybe)\\b", " ");
+        t = t.replaceAll("\\s+", " ").trim();
+        t = t.replaceAll("^[\\s\\p{Punct}]+", "").replaceAll("[\\s\\p{Punct}]+$", "").trim();
+        return t;
+    }
+
+    private static int countMeaningfulChars(String s) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 0x4e00 && c <= 0x9fff) {
+                n++;
+            } else if (Character.isLetterOrDigit(c)) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private static boolean isMeaninglessIssue(String issue) {
