@@ -85,7 +85,7 @@ public class MainCalibrateAgent implements AgentExecutor {
             通读下方用户发言与沙盘状态，找出**当前最大信息缺口**，用 Decision 模式产出**唯一一个**可回答的核心问句，帮用户把「决策对象、关键约束或背景类型」钉清楚。
 
             ## 必须遵守
-            - **questions 数组长度必须为 1**；不要一次抛 2～3 个问句。
+            - **questions 数组长度必须为 1**，且 **questions[0] 必须是非空字符串**（禁止 []、禁止占位「无」）。
             - 追问必须**紧扣用户已写内容里的具体词或关系**（例如亲子、学习、团队、技术栈），每轮问法随上文变化；**禁止**把下面这类当作主问句重复使用：「最想保住什么、最怕失去什么、时间约束」三件套模板。
             - 不要讨论应进哪间审议室、不要分配沙盘角色；只做澄清。
             - 禁止说教、「你应该」、禁止 JSON 与 Markdown 围栏外的任何字符。
@@ -229,7 +229,7 @@ public class MainCalibrateAgent implements AgentExecutor {
     ) {
         List<ConversationMessage> userSlice = sliceUserUtterances(fullHistory, 16);
         if (userSlice.isEmpty()) {
-            return "";
+            return formatCalibrationJson(FALLBACK_JSON).trim();
         }
         try {
             String payload = buildSandboxStep1UserPayload(userSlice, classificationHint);
@@ -239,20 +239,82 @@ public class MainCalibrateAgent implements AgentExecutor {
                             payload,
                             "sandbox:step1-clarify",
                             900,
-                            25)
-                    .block(Duration.ofSeconds(28));
+                            35)
+                    .block(Duration.ofSeconds(42));
             String md = formatCalibrationJson(raw == null ? "" : raw);
-            if (md == null || md.isBlank()) {
-                return "";
+            if (isAcceptableSandboxStep1ClarifyMd(md)) {
+                return md.trim();
             }
-            if (!md.contains("本轮追问")) {
-                return "";
+            // 模型常漏填 questions[]：formatter 会跳过「## 本轮追问」标题，但仍有阶段/理解确认——此前误判为失败
+            String stitched = tryPrependQuestionFromRawJson(raw, md);
+            if (stitched != null && isAcceptableSandboxStep1ClarifyMd(stitched)) {
+                log.info("sandbox step1 clarify: prepended question from raw JSON (model omitted formatted 本轮追问)");
+                return stitched.trim();
             }
-            return md.trim();
+            log.warn(
+                    "sandbox step1 clarify: model output not usable lenMd={} rawSnippet={} — using calibration FALLBACK_JSON",
+                    md == null ? -1 : md.length(),
+                    raw == null ? "" : safeSnippet(raw, 200));
+            return formatCalibrationJson(FALLBACK_JSON).trim();
         } catch (Exception e) {
-            log.warn("sandbox step1 clarify failed: {}", e.toString());
-            return "";
+            log.warn("sandbox step1 clarify failed: {} — using calibration FALLBACK_JSON", e.toString());
+            return formatCalibrationJson(FALLBACK_JSON).trim();
         }
+    }
+
+    private static boolean isAcceptableSandboxStep1ClarifyMd(String md) {
+        if (md == null || md.isBlank()) {
+            return false;
+        }
+        if (md.length() < 24) {
+            return false;
+        }
+        return md.contains("本轮追问")
+                || md.contains("### 阶段")
+                || md.contains("### 理解确认")
+                || md.contains("## 本轮追问");
+    }
+
+    /**
+     * 若 raw JSON 里仍有 questions[0]，但 Markdown _formatter 未生成「本轮追问」区块，则手动补上。
+     */
+    private String tryPrependQuestionFromRawJson(String raw, String formattedMd) {
+        if (raw == null || raw.isBlank() || formattedMd == null) {
+            return null;
+        }
+        try {
+            String trimmed = stripMarkdownFence(raw.trim());
+            int start = trimmed.indexOf('{');
+            int end = trimmed.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return null;
+            }
+            JsonNode root = objectMapper.readTree(trimmed.substring(start, end + 1));
+            JsonNode questions = root.get("questions");
+            if (questions == null || !questions.isArray() || questions.isEmpty()) {
+                return null;
+            }
+            String q = textOrEmpty(questions.get(0));
+            if (q.isBlank()) {
+                return null;
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("---\n\n## 本轮追问\n\n");
+            appendBlockquotedParagraph(sb, q);
+            sb.append("\n---\n\n");
+            sb.append(formattedMd.trim());
+            return sb.toString();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String safeSnippet(String s, int max) {
+        String t = s.replace("\r\n", " ").replace('\n', ' ').trim();
+        if (t.length() <= max) {
+            return t;
+        }
+        return t.substring(0, max) + "…";
     }
 
     private static List<ConversationMessage> sliceUserUtterances(List<ConversationMessage> full, int maxUserMsgs) {
