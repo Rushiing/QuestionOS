@@ -8,6 +8,7 @@ import com.questionos.backend.agent.SandboxAgoraRouteCard;
 import com.questionos.backend.agent.SandboxClassifyCard;
 import com.questionos.backend.agent.SandboxClassificationResult;
 import com.questionos.backend.agent.SandboxDeliberationScene;
+import com.questionos.backend.agent.MainCalibrateAgent;
 import com.questionos.backend.agent.SandboxSceneClassifier;
 import com.questionos.backend.integrations.AgentRegistryService;
 import com.questionos.backend.domain.ConversationMessage;
@@ -48,6 +49,7 @@ public class SessionService {
     private final ObjectMapper objectMapper;
     private final SessionSnapshotPersistence sessionPersistence;
     private final SandboxSceneClassifier sandboxSceneClassifier;
+    private final MainCalibrateAgent mainCalibrateAgent;
     private final AgentRegistryService agentRegistryService;
 
     @Value("${questionos.session.titleFromLlm:false}")
@@ -66,6 +68,7 @@ public class SessionService {
             ObjectMapper objectMapper,
             SessionSnapshotPersistence sessionPersistence,
             SandboxSceneClassifier sandboxSceneClassifier,
+            MainCalibrateAgent mainCalibrateAgent,
             AgentRegistryService agentRegistryService
     ) {
         this.orchestrator = orchestrator;
@@ -73,6 +76,7 @@ public class SessionService {
         this.objectMapper = objectMapper;
         this.sessionPersistence = sessionPersistence;
         this.sandboxSceneClassifier = sandboxSceneClassifier;
+        this.mainCalibrateAgent = mainCalibrateAgent;
         this.agentRegistryService = agentRegistryService;
     }
 
@@ -198,7 +202,8 @@ public class SessionService {
                     return Optional.of(userMessage.messageId());
                 }
                 if (!isIssueClearForStep2(issue)) {
-                    String blockMd = SandboxClassifyCard.markdownIssueNotYetConcrete(issue);
+                    String followMd = mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, null);
+                    String blockMd = SandboxClassifyCard.markdownIssueNotYetConcrete(issue, followMd);
                     appendMessage(session, MessageRole.AGENT, blockMd, turnId, "sandbox-classify");
                     Map<String, Object> classifyPayload = new LinkedHashMap<>();
                     classifyPayload.put("content", blockMd);
@@ -237,8 +242,11 @@ public class SessionService {
             SandboxClassificationResult cr = classificationSnapshot != null
                     ? classificationSnapshot
                     : SandboxClassificationResult.fromSceneOnly(sc);
+            String followMd = needClarificationFirst
+                    ? mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, classificationSnapshot)
+                    : "";
             String classifyMd = needClarificationFirst
-                    ? SandboxClassifyCard.markdownNeedClarification(cr)
+                    ? SandboxClassifyCard.markdownNeedClarification(cr, followMd)
                     : SandboxClassifyCard.markdown(cr);
             appendMessage(session, MessageRole.AGENT, classifyMd, turnId, "sandbox-classify");
             Map<String, Object> classifyPayload = new LinkedHashMap<>();

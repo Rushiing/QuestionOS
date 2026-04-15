@@ -74,6 +74,46 @@ public class MainCalibrateAgent implements AgentExecutor {
             用户侧输入在下方「结构化对话包」中给出，请通读后再输出 JSON。
             """;
 
+    /**
+     * 沙盘 Agora 步骤①：用与思维校准相同的 Decision JSON，再经 {@link #formatCalibrationJson(String)} 转成 Markdown，
+     * 嵌入「议题确认」卡片，替代固定三问模板。
+     */
+    private static final String SANDBOX_STEP1_CLARIFY_PROMPT = """
+            你是「思维校准」式追问生成器，服务于 QuestionOS **沙盘推演 → Agora 步骤①**（议题仍在门口，未进入审议路由与多角色发言）。
+
+            ## 目标
+            通读下方用户发言与沙盘状态，找出**当前最大信息缺口**，用 Decision 模式产出**唯一一个**可回答的核心问句，帮用户把「决策对象、关键约束或背景类型」钉清楚。
+
+            ## 必须遵守
+            - **questions 数组长度必须为 1**；不要一次抛 2～3 个问句。
+            - 追问必须**紧扣用户已写内容里的具体词或关系**（例如亲子、学习、团队、技术栈），每轮问法随上文变化；**禁止**把下面这类当作主问句重复使用：「最想保住什么、最怕失去什么、时间约束」三件套模板。
+            - 不要讨论应进哪间审议室、不要分配沙盘角色；只做澄清。
+            - 禁止说教、「你应该」、禁止 JSON 与 Markdown 围栏外的任何字符。
+
+            ## 输出（仅一个合法 JSON 对象）
+            {
+              "calibration_mode": "decision",
+              "phase": "scenario_confirm|language_clarify|socratic|polanyi|synthesis|action_anchor",
+              "scenario_echo": "可选，1～2 句，复述你理解的用户处境",
+              "fuzzy_focus": "可选，本轮要拆的模糊词",
+              "questions": ["本轮唯一问句"],
+              "polanyi_strategy": "negative|exemplar|past_behavior|null",
+              "user_conclusion_mirror": "可选",
+              "detected_biases": [],
+              "clarity_change": 0.12,
+              "reasoning": "极短：为何选此 phase/此问",
+              "suggested_direction": "探索向提示；多条用中文分号分隔"
+            }
+
+            ## phase 提示
+            - 有意图但背景不清 → 常用 scenario_confirm，可用「突发 vs 长期」类二分问法打开局面。
+            - 关键词含糊 → language_clarify。
+            - 已较具体仍缺一条链 → socratic。
+            - 用户显露「说不清/就是感觉」→ polanyi（一问）。
+
+            clarity_change：约 -0.05～0.25。
+            """;
+
     private static final String FALLBACK_JSON = """
             {"calibration_mode":"decision","phase":"scenario_confirm","scenario_echo":"","fuzzy_focus":"","questions":["请先简单说：你现在最纠结或最卡住的一件事是什么？用一两句话就够。"],"polanyi_strategy":null,"user_conclusion_mirror":"","detected_biases":[],"clarity_change":0.0,"reasoning":"降级占位：模型调用失败","suggested_direction":"检查 LLM 配置后重试"}
             """;
@@ -177,6 +217,87 @@ public class MainCalibrateAgent implements AgentExecutor {
                         .delayElements(Duration.ofMillis(80)));
     }
 
+    /**
+     * 为沙盘步骤①生成「思维校准」形态的追问 Markdown；失败或不可解析时返回空串，由卡片回退到简短提示。
+     *
+     * @param fullHistory        本会话消息（含本轮用户）；仅抽取其中用户句参与摘录
+     * @param classificationHint 若已跑过分诊且为 LOW，传入结果供追问贴合暂定室；议题未成形时传 null
+     */
+    public String generateSandboxStep1ClarifyFollowup(
+            List<ConversationMessage> fullHistory,
+            SandboxClassificationResult classificationHint
+    ) {
+        List<ConversationMessage> userSlice = sliceUserUtterances(fullHistory, 16);
+        if (userSlice.isEmpty()) {
+            return "";
+        }
+        try {
+            String payload = buildSandboxStep1UserPayload(userSlice, classificationHint);
+            String raw = invokeService
+                    .invokeDefaultLlmCompact(
+                            SANDBOX_STEP1_CLARIFY_PROMPT,
+                            payload,
+                            "sandbox:step1-clarify",
+                            900,
+                            25)
+                    .block(Duration.ofSeconds(28));
+            String md = formatCalibrationJson(raw == null ? "" : raw);
+            if (md == null || md.isBlank()) {
+                return "";
+            }
+            if (!md.contains("本轮追问")) {
+                return "";
+            }
+            return md.trim();
+        } catch (Exception e) {
+            log.warn("sandbox step1 clarify failed: {}", e.toString());
+            return "";
+        }
+    }
+
+    private static List<ConversationMessage> sliceUserUtterances(List<ConversationMessage> full, int maxUserMsgs) {
+        List<ConversationMessage> users = new ArrayList<>();
+        if (full == null) {
+            return users;
+        }
+        for (ConversationMessage m : full) {
+            if (m.role() == MessageRole.USER) {
+                users.add(m);
+            }
+        }
+        if (users.size() <= maxUserMsgs) {
+            return users;
+        }
+        return users.subList(users.size() - maxUserMsgs, users.size());
+    }
+
+    private static String buildSandboxStep1UserPayload(
+            List<ConversationMessage> userSlice,
+            SandboxClassificationResult hint
+    ) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("### 沙盘步骤① 状态\n");
+        if (hint == null) {
+            sb.append("- 尚未达到「可高信心分诊」门槛：系统未写入审议室；请根据用户已写内容追问，帮助其形成可分诊的决策议题。\n");
+        } else {
+            SandboxDeliberationScene sc = hint.scene();
+            sb.append("- 分诊返回 **LOW** 信心：暂不正式入室。以下「暂定审议室/摘要」仅供你设计追问时参考，**不要**对用户断言「你一定会进这间室」。\n");
+            sb.append("- 暂定审议室：")
+                    .append(SandboxAgoraRouteCard.roomTitle(sc))
+                    .append("（")
+                    .append(SandboxAgoraRouteCard.roomSubtitle(sc))
+                    .append("）\n");
+            String norm = hint.normalizedIssue() == null ? "" : hint.normalizedIssue().trim();
+            sb.append("- 归一化议题摘要：").append(norm.isEmpty() ? "（无）" : norm).append("\n");
+        }
+        sb.append("\n### 用户发言摘录（旧→新，仅用户句）\n");
+        for (ConversationMessage m : userSlice) {
+            String body = truncate(m.content() == null ? "" : m.content(), USER_TRANSCRIPT_MAX);
+            sb.append("[用户]\n").append(body).append("\n\n");
+        }
+        return sb.toString();
+    }
+
     private static String formatInvokeFailureMessage(Throwable e) {
         if (isLikelyAsyncTimeout(e)) {
             return "调用失败: 大模型在配置的超时时间内未返回完整结果（追问带长摘录时更慢）。"
@@ -260,7 +381,7 @@ public class MainCalibrateAgent implements AgentExecutor {
     /**
      * 将模型返回的 JSON（可含 ```json 围栏）转为可读 Markdown，供接入台展示。
      */
-    String formatCalibrationJson(String raw) {
+    public String formatCalibrationJson(String raw) {
         if (raw == null || raw.isBlank()) {
             return "";
         }
