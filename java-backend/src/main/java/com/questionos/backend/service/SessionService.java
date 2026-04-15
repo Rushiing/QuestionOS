@@ -231,6 +231,13 @@ public class SessionService {
                             safeLogSnippet(issue),
                             clarifyOk,
                             clarifyChars);
+                    if (!clarifyOk) {
+                        log.warn(
+                                "sandbox step1 clarify (issue-not-concrete) got no usable markdown sessionId={} turnId={} — "
+                                        + "search \"sandbox step1 clarify exhausted\" or \"sandbox step1 clarify attempt\"",
+                                sessionId,
+                                turnId);
+                    }
                     return Optional.of(userMessage.messageId());
                 }
                 classificationSnapshot = sandboxSceneClassifier.classifyDetailed(issue);
@@ -283,6 +290,15 @@ public class SessionService {
                     cr.forcedSecondary(),
                     step1ClarifyGenerated,
                     step1ClarifyChars);
+            if (needClarificationFirst && !step1ClarifyGenerated) {
+                log.warn(
+                        "sandbox step1 clarify got no usable markdown sessionId={} turnId={} scene={} — search logs for "
+                                + "\"sandbox step1 clarify exhausted\" or \"sandbox step1 clarify attempt\" on this host; "
+                                + "typical causes: QUESTIONOS_LLM_* / network to LLM / timeout / empty model body",
+                        sessionId,
+                        turnId,
+                        sc);
+            }
             if (needClarificationFirst) {
                 publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + "}");
                 return Optional.of(userMessage.messageId());
