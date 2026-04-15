@@ -16,7 +16,7 @@ public final class SandboxClassifyCard {
 
     /**
      * @param calibrationFollowupMd 由 {@link MainCalibrateAgent#generateSandboxStep1ClarifyFollowup} 生成的 Markdown；
-     *                                为空时使用简短兜底提示。
+     *                                为空时表示大模型多次重试仍不可用，展示「请重试」说明（非伪造追问）。
      */
     public static String markdownNeedClarification(SandboxClassificationResult r, String calibrationFollowupMd) {
         return markdown(r, true, calibrationFollowupMd);
@@ -47,7 +47,8 @@ public final class SandboxClassifyCard {
         if (calibrationFollowupMd != null && !calibrationFollowupMd.isBlank()) {
             sb.append(calibrationFollowupMd.trim()).append("\n\n");
         } else {
-            sb.append("请用**至少一两句完整中文**说明：你在**决策什么**、**主要顾虑或约束**、以及**时间边界**（若适用）。")
+            sb.append(step1ClarifyModelUnavailableBlock())
+                    .append("若你仍想先手写补充，请用**至少一两句完整中文**说明：你在**决策什么**、**主要顾虑或约束**、以及**时间边界**（若适用）。")
                     .append("单字敷衍、纯附和或「不知道」类回答无法入室。\n\n");
         }
         sb.append("---\n\n")
@@ -93,9 +94,8 @@ public final class SandboxClassifyCard {
             if (calibrationFollowupMd != null && !calibrationFollowupMd.isBlank()) {
                 interactionBlock = "\n\n" + calibrationFollowupMd.trim() + "\n";
             } else {
-                interactionBlock = "\n\n### 💬 需要你补一句（继续步骤 ①）\n\n"
-                        + "请围绕上面「已理解的决策焦点」，用一两句话补上**与决策直接相关的背景或关键约束**"
-                        + "（例如相关方、时间压力、你已尝试过的做法）；避免只回附和语。\n";
+                interactionBlock = "\n\n" + step1ClarifyModelUnavailableBlock()
+                        + "你也可以先**直接回复一两句**，围绕上面「已理解的决策焦点」补充背景或关键约束。\n";
             }
         }
 
@@ -115,5 +115,12 @@ public final class SandboxClassifyCard {
                 + (needClarification
                 ? "当前暂停在步骤①，等待你补充后再进入 **审议路由（步骤 ②）**。\n"
                 : "接下来展示 **审议路由（步骤 ②）**：思想家面板与追问表；其后进入多角色轮流发言。\n");
+    }
+
+    /** 步骤①智能追问未生成时展示：不冒充模型输出，引导用户重试发送。 */
+    private static String step1ClarifyModelUnavailableBlock() {
+        return "### ⚠️ 本轮智能追问未生成\n\n"
+                + "大模型在多次重试后仍未返回可用结果（可能为超时、网关或上游空响应）。"
+                + "请**稍后再点击发送**重试同一句或略改写后再发；追问只会来自真模型，不会用本地模板冒充。\n\n";
     }
 }
