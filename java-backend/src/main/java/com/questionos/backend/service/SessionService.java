@@ -203,6 +203,8 @@ public class SessionService {
                 }
                 if (!isIssueClearForStep2(issue)) {
                     String followMd = mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, null);
+                    boolean clarifyOk = followMd != null && !followMd.isBlank();
+                    int clarifyChars = followMd == null ? 0 : followMd.length();
                     String blockMd = SandboxClassifyCard.markdownIssueNotYetConcrete(issue, followMd);
                     appendMessage(session, MessageRole.AGENT, blockMd, turnId, "sandbox-classify");
                     Map<String, Object> classifyPayload = new LinkedHashMap<>();
@@ -216,12 +218,19 @@ public class SessionService {
                     classifyPayload.put("requiresClarification", true);
                     classifyPayload.put("invalidInput", false);
                     classifyPayload.put("issueNotConcrete", true);
+                    classifyPayload.put("step1ClarifyGenerated", clarifyOk);
+                    classifyPayload.put("step1ClarifyChars", clarifyChars);
                     classifyPayload.put("step", 1);
                     publishEvent(sessionId, turnId, "sandbox_classify", jsonPayload(classifyPayload));
                     persistSnapshot(sessionId);
                     publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + "}");
-                    log.info("sandbox classify blocked issue-not-concrete sessionId={} turnId={} issue='{}'",
-                            sessionId, turnId, safeLogSnippet(issue));
+                    log.info(
+                            "sandbox classify issue-not-concrete sessionId={} turnId={} issue='{}' step1ClarifyGenerated={} step1ClarifyChars={}",
+                            sessionId,
+                            turnId,
+                            safeLogSnippet(issue),
+                            clarifyOk,
+                            clarifyChars);
                     return Optional.of(userMessage.messageId());
                 }
                 classificationSnapshot = sandboxSceneClassifier.classifyDetailed(issue);
@@ -245,6 +254,8 @@ public class SessionService {
             String followMd = needClarificationFirst
                     ? mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, classificationSnapshot)
                     : "";
+            boolean step1ClarifyGenerated = followMd != null && !followMd.isBlank();
+            int step1ClarifyChars = followMd == null ? 0 : followMd.length();
             String classifyMd = needClarificationFirst
                     ? SandboxClassifyCard.markdownNeedClarification(cr, followMd)
                     : SandboxClassifyCard.markdown(cr);
@@ -258,16 +269,20 @@ public class SessionService {
             classifyPayload.put("confidence", cr.confidence() == null ? "" : cr.confidence());
             classifyPayload.put("forcedSecondary", cr.forcedSecondary());
             classifyPayload.put("requiresClarification", needClarificationFirst);
+            classifyPayload.put("step1ClarifyGenerated", step1ClarifyGenerated);
+            classifyPayload.put("step1ClarifyChars", step1ClarifyChars);
             classifyPayload.put("step", 1);
             publishEvent(sessionId, turnId, "sandbox_classify", jsonPayload(classifyPayload));
             persistSnapshot(sessionId);
             log.info(
-                    "sandbox classify card persisted+emitted sessionId={} turnId={} scene={} confidence={} forcedSecondary={}",
+                    "sandbox classify card persisted+emitted sessionId={} turnId={} scene={} confidence={} forcedSecondary={} step1ClarifyGenerated={} step1ClarifyChars={}",
                     sessionId,
                     turnId,
                     sc,
                     cr.confidence(),
-                    cr.forcedSecondary());
+                    cr.forcedSecondary(),
+                    step1ClarifyGenerated,
+                    step1ClarifyChars);
             if (needClarificationFirst) {
                 publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + "}");
                 return Optional.of(userMessage.messageId());
