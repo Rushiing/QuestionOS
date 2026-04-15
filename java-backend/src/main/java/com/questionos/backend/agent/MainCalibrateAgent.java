@@ -118,6 +118,13 @@ public class MainCalibrateAgent implements AgentExecutor {
             {"calibration_mode":"decision","phase":"scenario_confirm","scenario_echo":"","fuzzy_focus":"","questions":["请先简单说：你现在最纠结或最卡住的一件事是什么？用一两句话就够。"],"polanyi_strategy":null,"user_conclusion_mirror":"","detected_biases":[],"clarity_change":0.0,"reasoning":"降级占位：模型调用失败","suggested_direction":"检查 LLM 配置后重试"}
             """;
 
+    /**
+     * 沙盘步骤①追问失败时的用户向降级（勿复用 {@link #FALLBACK_JSON}，避免对终端暴露「检查 LLM 配置」等开发提示）。
+     */
+    private static final String SANDBOX_STEP1_FALLBACK_JSON = """
+            {"calibration_mode":"decision","phase":"scenario_confirm","scenario_echo":"我先把你说的理解成：你在想接下来怎么走，但信息还不够具体，需要先把「卡住」落到一件可命名的事上。","fuzzy_focus":"","questions":["如果把最近两周里最让你睡不着或最走神的一件事单独说出来，它更贴近工作/学业、钱与生存、亲密关系、家庭亲子、健康状态，还是别的？选一个最贴近的就行。"],"polanyi_strategy":null,"user_conclusion_mirror":"","detected_biases":[],"clarity_change":0.1,"reasoning":"在信息偏少时，先用一个轻量分叉把场景钉小，后面追问才能贴着你的处境走。","suggested_direction":"用一两句话描述那个场景里「谁、在什么情境下、发生了什么」；不必完整，但要能画面感"}
+            """;
+
     private final OpenClawInvokeService invokeService;
     private final ObjectMapper objectMapper;
 
@@ -218,7 +225,7 @@ public class MainCalibrateAgent implements AgentExecutor {
     }
 
     /**
-     * 为沙盘步骤①生成「思维校准」形态的追问 Markdown；失败或不可解析时返回空串，由卡片回退到简短提示。
+     * 为沙盘步骤①生成「思维校准」形态的追问 Markdown；失败或不可解析时返回 {@link #SANDBOX_STEP1_FALLBACK_JSON} 格式化结果（对用户友好，不暴露运维文案）。
      *
      * @param fullHistory        本会话消息（含本轮用户）；仅抽取其中用户句参与摘录
      * @param classificationHint 若已跑过分诊且为 LOW，传入结果供追问贴合暂定室；议题未成形时传 null
@@ -229,7 +236,7 @@ public class MainCalibrateAgent implements AgentExecutor {
     ) {
         List<ConversationMessage> userSlice = sliceUserUtterances(fullHistory, 16);
         if (userSlice.isEmpty()) {
-            return formatCalibrationJson(FALLBACK_JSON).trim();
+            return formatCalibrationJson(SANDBOX_STEP1_FALLBACK_JSON).trim();
         }
         try {
             String payload = buildSandboxStep1UserPayload(userSlice, classificationHint);
@@ -252,13 +259,13 @@ public class MainCalibrateAgent implements AgentExecutor {
                 return stitched.trim();
             }
             log.warn(
-                    "sandbox step1 clarify: model output not usable lenMd={} rawSnippet={} — using calibration FALLBACK_JSON",
+                    "sandbox step1 clarify: model output not usable lenMd={} rawSnippet={} — using SANDBOX_STEP1_FALLBACK_JSON (check QUESTIONOS_LLM_* / timeout / upstream)",
                     md == null ? -1 : md.length(),
                     raw == null ? "" : safeSnippet(raw, 200));
-            return formatCalibrationJson(FALLBACK_JSON).trim();
+            return formatCalibrationJson(SANDBOX_STEP1_FALLBACK_JSON).trim();
         } catch (Exception e) {
-            log.warn("sandbox step1 clarify failed: {} — using calibration FALLBACK_JSON", e.toString());
-            return formatCalibrationJson(FALLBACK_JSON).trim();
+            log.warn("sandbox step1 clarify failed — using SANDBOX_STEP1_FALLBACK_JSON", e);
+            return formatCalibrationJson(SANDBOX_STEP1_FALLBACK_JSON).trim();
         }
     }
 
