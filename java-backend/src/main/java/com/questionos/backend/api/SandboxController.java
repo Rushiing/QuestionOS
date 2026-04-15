@@ -11,6 +11,8 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.Optional;
 
@@ -62,18 +64,24 @@ public class SandboxController {
         return ResponseEntity.ok(new SandboxDtos.SessionListResponse(items));
     }
 
+    /**
+     * 在 boundedElastic 上执行：SessionService 内会对 LLM 使用 {@code Mono#block}，
+     * 不可在 WebFlux 的 reactor-http 事件循环线程上直接阻塞。
+     */
     @PostMapping("/{sessionId}/messages")
-    public ResponseEntity<SandboxDtos.SendMessageResponse> send(
+    public Mono<ResponseEntity<SandboxDtos.SendMessageResponse>> send(
             org.springframework.web.server.ServerWebExchange exchange,
             @PathVariable String sessionId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody SandboxDtos.SendMessageRequest request
     ) {
-        Optional<String> maybeMessageId = sessionService.acceptUserMessage(currentUserId(exchange), sessionId, request.content(), idempotencyKey);
-        if (maybeMessageId.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        }
-        return ResponseEntity.ok(new SandboxDtos.SendMessageResponse(maybeMessageId.get(), "accepted", idempotencyKey));
+        String uid = currentUserId(exchange);
+        return Mono.fromCallable(() -> sessionService.acceptUserMessage(uid, sessionId, request.content(), idempotencyKey))
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(maybeMessageId -> maybeMessageId
+                        .map(messageId -> ResponseEntity.ok(
+                                new SandboxDtos.SendMessageResponse(messageId, "accepted", idempotencyKey)))
+                        .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build()));
     }
 
     @GetMapping(value = "/{sessionId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
