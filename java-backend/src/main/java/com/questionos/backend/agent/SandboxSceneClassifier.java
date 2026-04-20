@@ -63,6 +63,17 @@ public class SandboxSceneClassifier {
 
     /**
      * 完整分诊结果（步骤 ① 卡片）：含归一化议题句、信心与是否触发二次强制入室。
+     *
+     * <p><b>confidence（HIGH / LOW）判定</b>，供步骤①卡片与是否进入步骤②共用：
+     * <ul>
+     *   <li>模型 JSON 中 {@code confidence} 合法则为该值。</li>
+     *   <li>缺省或非法时：若原始输出可被 {@link #isLowConfidence(String)} 判为自陈 LOW，则为 {@code LOW}，否则 {@code HIGH}。</li>
+     *   <li>若解析到 {@code scene == GENERAL}，或 {@link #isLowConfidence(String)} 为真，则<strong>强制</strong>{@code LOW}
+     *       （信息过少或模型自评偏低，本回合不写入会话场景、不进步骤②）。</li>
+     *   <li>LLM 调用失败走关键词兜底时，恒为 {@code LOW}。</li>
+     * </ul>
+     * 进入步骤②仍要求本结果为 {@code HIGH} 且场景已写入会话（见
+     * {@link com.questionos.backend.service.SessionService}）。
      */
     public SandboxClassificationResult classifyDetailed(String issuePlainText) {
         String trimmed = issuePlainText == null ? "" : issuePlainText.trim();

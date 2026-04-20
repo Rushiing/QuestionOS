@@ -3,6 +3,15 @@ package com.questionos.backend.agent;
 /**
  * 沙盘步骤 ①：议题确认与进入 Agora 审议室（在「审议路由」卡片之前展示）。
  * 卡片仅保留四块：本轮追问、追问理由、分诊信心、进入审议室。
+ *
+ * <p><b>「分诊信心」展示逻辑</b>（与 SSE payload 里的 {@code confidence} 字符串不必一致）：
+ * <ul>
+ *   <li>走 {@link SandboxSceneClassifier} 且已得到 {@link SandboxClassificationResult} 时：内部为 {@code HIGH} → 卡片写「高」；
+ *       内部为 {@code LOW} → 卡片写「中」（表示未达入室门槛、与步骤②的 {@code HIGH} 区分，并非模型原文）。</li>
+ *   <li>议题未过本地清晰度门槛（未调用分诊模型）→ 固定「中」。</li>
+ *   <li>无意义输入拦截 → 固定「—」（无可分诊议题）。</li>
+ * </ul>
+ * 步骤①→②是否发审议路由仍仅取决于后端 {@code confidence == HIGH} 且非 GENERAL 等条件，与这里用「中」表示 LOW 无关。
  */
 public final class SandboxClassifyCard {
     private SandboxClassifyCard() {}
@@ -54,6 +63,7 @@ public final class SandboxClassifyCard {
         SandboxDeliberationScene sc = r.scene();
         String roomTitle = SandboxAgoraRouteCard.roomTitle(sc);
         String roomSubtitle = SandboxAgoraRouteCard.roomSubtitle(sc);
+        // 与 classify 事件里 r.confidence() 一致：HIGH/LOW；卡片上 LOW 刻意显示为「中」（见类注释）
         String confLabel = switch (r.confidence() == null ? "" : r.confidence().toUpperCase()) {
             case "HIGH" -> "高";
             case "LOW" -> "中";
