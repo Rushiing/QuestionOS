@@ -233,43 +233,64 @@ public class MainCalibrateAgent implements AgentExecutor {
             log.warn("sandbox step1 clarify: no user utterances in history, skip LLM");
             return "";
         }
-        final int maxAttempts = 3;
-        String payload = buildSandboxStep1UserPayload(userSlice, classificationHint);
+        final int maxAttempts = 5;
         Exception lastException = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            boolean tightPayload = attempt >= 3;
+            List<ConversationMessage> slice = tightPayload
+                    ? sliceUserUtterances(fullHistory, 6)
+                    : userSlice;
+            int perUserChars = tightPayload ? 700 : USER_TRANSCRIPT_MAX;
+            String payload = buildSandboxStep1UserPayload(slice, classificationHint, perUserChars);
+            int compactTimeoutSec = Math.min(35 + (attempt - 1) * 5, 60);
+            int blockWaitSec = compactTimeoutSec + 12;
             try {
                 String raw = invokeService
                         .invokeDefaultLlmCompact(
                                 SANDBOX_STEP1_CLARIFY_PROMPT,
                                 payload,
-                                "sandbox:step1-clarify",
+                                "sandbox:step1-clarify|" + attempt,
                                 900,
-                                35)
-                        .block(Duration.ofSeconds(42));
+                                compactTimeoutSec)
+                        .block(Duration.ofSeconds(blockWaitSec));
                 String md = formatCalibrationJson(raw == null ? "" : raw);
                 if (isAcceptableSandboxStep1ClarifyMd(md)) {
                     if (attempt > 1) {
-                        log.info("sandbox step1 clarify succeeded on attempt {}", attempt);
+                        log.info(
+                                "sandbox step1 clarify succeeded on attempt {} tightPayload={} payloadChars={}",
+                                attempt,
+                                tightPayload,
+                                payload.length());
                     }
                     return md.trim();
                 }
                 String stitched = tryPrependQuestionFromRawJson(raw, md);
                 if (stitched != null && isAcceptableSandboxStep1ClarifyMd(stitched)) {
-                    log.info("sandbox step1 clarify: prepended question from raw JSON on attempt {}", attempt);
+                    log.info(
+                            "sandbox step1 clarify: prepended question from raw JSON on attempt {} tightPayload={}",
+                            attempt,
+                            tightPayload);
                     return stitched.trim();
                 }
                 log.warn(
-                        "sandbox step1 clarify attempt {}/{} unusable lenMd={} rawSnippet={}",
+                        "sandbox step1 clarify attempt {}/{} unusable tightPayload={} lenMd={} rawSnippet={}",
                         attempt,
                         maxAttempts,
+                        tightPayload,
                         md == null ? -1 : md.length(),
                         raw == null ? "" : safeSnippet(raw, 200));
             } catch (Exception e) {
                 lastException = e;
-                log.warn("sandbox step1 clarify attempt {}/{} failed: {}", attempt, maxAttempts, e.toString());
+                log.warn(
+                        "sandbox step1 clarify attempt {}/{} failed tightPayload={}: {}",
+                        attempt,
+                        maxAttempts,
+                        tightPayload,
+                        e.toString());
             }
             if (attempt < maxAttempts) {
-                sleepQuiet(450L);
+                long backoffMs = Math.min(400L * (1L << (attempt - 1)), 5000L);
+                sleepQuiet(backoffMs);
             }
         }
         if (lastException != null) {
@@ -365,6 +386,14 @@ public class MainCalibrateAgent implements AgentExecutor {
             List<ConversationMessage> userSlice,
             SandboxClassificationResult hint
     ) {
+        return buildSandboxStep1UserPayload(userSlice, hint, USER_TRANSCRIPT_MAX);
+    }
+
+    private static String buildSandboxStep1UserPayload(
+            List<ConversationMessage> userSlice,
+            SandboxClassificationResult hint,
+            int maxCharsPerUserBody
+    ) {
         StringBuilder sb = new StringBuilder();
         sb.append("### 沙盘步骤① 状态\n");
         if (hint == null) {
@@ -381,8 +410,9 @@ public class MainCalibrateAgent implements AgentExecutor {
             sb.append("- 归一化议题摘要：").append(norm.isEmpty() ? "（无）" : norm).append("\n");
         }
         sb.append("\n### 用户发言摘录（旧→新，仅用户句）\n");
+        int cap = Math.max(200, Math.min(maxCharsPerUserBody, USER_TRANSCRIPT_MAX));
         for (ConversationMessage m : userSlice) {
-            String body = truncate(m.content() == null ? "" : m.content(), USER_TRANSCRIPT_MAX);
+            String body = truncate(m.content() == null ? "" : m.content(), cap);
             sb.append("[用户]\n").append(body).append("\n\n");
         }
         return sb.toString();
