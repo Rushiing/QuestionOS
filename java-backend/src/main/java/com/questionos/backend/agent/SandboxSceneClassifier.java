@@ -90,8 +90,8 @@ public class SandboxSceneClassifier {
                             "用户议题如下（可能含中英文）：\n\n" + snippet,
                             "sandbox:scene-classify",
                             180,
-                            20)
-                    .block(Duration.ofSeconds(22));
+                            30)
+                    .block(Duration.ofSeconds(35));
             JsonNode root = parseJsonObject(raw);
             SandboxDeliberationScene fromLlm = null;
             if (root != null && root.hasNonNull("scene")) {

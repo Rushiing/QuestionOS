@@ -16,7 +16,7 @@ export interface StreamSseOptions {
   connectTimeoutMs?: number;
 }
 
-const DEFAULT_SSE_CONNECT_TIMEOUT_MS = 60_000;
+const DEFAULT_SSE_CONNECT_TIMEOUT_MS = 270_000; // 270s = 后端 240s LLM timeout + 30s 缓冲
 
 export const streamSse = async (options: StreamSseOptions): Promise<void> => {
   const streamUrl = apiPath(options.path);

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(mvn -DskipTests compile)",
+      "Bash(timeout 30 mvn spring-boot:run -DQUESTIONOS_LLM_ENDPOINT=https://api.openai.com -DQUESTIONOS_LLM_API_KEY=sk-test-key -DQUESTIONOS_LLM_MODEL=gpt-4-turbo)",
+      "Bash(timeout 30 mvn spring-boot:run)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}
