@@ -77,16 +77,20 @@ public class MainCalibrateAgent implements AgentExecutor {
     /**
      * 沙盘 Agora 步骤①：用与思维校准相同的 Decision JSON，再经 {@link #formatCalibrationJson(String)} 转成 Markdown，
      * 嵌入「议题确认」卡片，替代固定三问模板。
+     *
+     * <p>该 prompt 由 {@link #buildSandboxStep1UserPayload(List, SandboxClassificationResult, int, SandboxDeliberationScene)}
+     * 在运行时注入审议室特定的追问维度库，实现**场景感知的针对性追问**。
      */
     private static final String SANDBOX_STEP1_CLARIFY_PROMPT = """
             你是「思维校准」式追问生成器，服务于 QuestionOS **沙盘推演 → Agora 步骤①**（议题仍在门口，未进入审议路由与多角色发言）。
 
             ## 目标
-            通读下方用户发言与沙盘状态，找出**当前最大信息缺口**，用 Decision 模式产出**唯一一个**可回答的核心问句，帮用户把「决策对象、关键约束或背景类型」钉清楚。
+            通读下方用户发言、沙盘状态和**审议室特有的追问维度**，找出**当前最大信息缺口**，用 Decision 模式产出**唯一一个**可回答的核心问句，帮用户把「决策对象、关键约束或背景类型」钉清楚。
 
             ## 必须遵守
             - **questions 数组长度必须为 1**，且 **questions[0] 必须是非空字符串**（禁止 []、禁止占位「无」）。
             - 追问必须**紧扣用户已写内容里的具体词或关系**（例如亲子、学习、团队、技术栈），每轮问法随上文变化；**禁止**把下面这类当作主问句重复使用：「最想保住什么、最怕失去什么、时间约束」三件套模板。
+            - **优先围绕下方「审议室的关键追问维度」选择追问方向**，但不要直接重述维度本身，而是用用户已有的具体语境自然化地提问。
             - 不要讨论应进哪间审议室、不要分配沙盘角色；只做澄清。
             - 禁止说教、「你应该」、禁止 JSON 与 Markdown 围栏外的任何字符。
 
@@ -101,7 +105,7 @@ public class MainCalibrateAgent implements AgentExecutor {
               "user_conclusion_mirror": "可选",
               "detected_biases": [],
               "clarity_change": 0.12,
-              "reasoning": "极短：为何选此 phase/此问",
+              "reasoning": "极短：为何选此 phase/此问，以及是否受审议室维度启发",
               "suggested_direction": "探索向提示；多条用中文分号分隔"
             }
 
@@ -243,9 +247,18 @@ public class MainCalibrateAgent implements AgentExecutor {
      * @param fullHistory        本会话消息（含本轮用户）；仅抽取其中用户句参与摘录
      * @param classificationHint 若已跑过分诊且为 LOW，传入结果供追问贴合暂定室；议题未成形时传 null
      */
+    /**
+     * 为沙盘步骤①生成针对性的追问，考虑分诊场景与审议室特有的维度库。
+     *
+     * @param fullHistory 完整对话历史
+     * @param classificationHint 分诊结果（含推荐审议室）
+     * @param deliberationScene 若分诊给出明确场景，可传入以增强维度库指导；若为 null 则仅用 classificationHint
+     * @return 追问的 Markdown 格式，包含本轮追问与追问理由
+     */
     public String generateSandboxStep1ClarifyFollowup(
             List<ConversationMessage> fullHistory,
-            SandboxClassificationResult classificationHint
+            SandboxClassificationResult classificationHint,
+            SandboxDeliberationScene deliberationScene
     ) {
         List<ConversationMessage> userSlice = sliceUserUtterances(fullHistory, 16);
         if (userSlice.isEmpty()) {
@@ -260,7 +273,7 @@ public class MainCalibrateAgent implements AgentExecutor {
                     ? sliceUserUtterances(fullHistory, 6)
                     : userSlice;
             int perUserChars = tightPayload ? 700 : USER_TRANSCRIPT_MAX;
-            String payload = buildSandboxStep1UserPayload(slice, classificationHint, perUserChars);
+            String payload = buildSandboxStep1UserPayload(slice, classificationHint, perUserChars, deliberationScene);
             int compactTimeoutSec = Math.min(35 + (attempt - 1) * 5, 60);
             int blockWaitSec = compactTimeoutSec + 12;
             try {
@@ -461,7 +474,7 @@ public class MainCalibrateAgent implements AgentExecutor {
             List<ConversationMessage> userSlice,
             SandboxClassificationResult hint
     ) {
-        return buildSandboxStep1UserPayload(userSlice, hint, USER_TRANSCRIPT_MAX);
+        return buildSandboxStep1UserPayload(userSlice, hint, USER_TRANSCRIPT_MAX, null);
     }
 
     private static String buildSandboxStep1UserPayload(
@@ -469,22 +482,41 @@ public class MainCalibrateAgent implements AgentExecutor {
             SandboxClassificationResult hint,
             int maxCharsPerUserBody
     ) {
+        return buildSandboxStep1UserPayload(userSlice, hint, maxCharsPerUserBody, null);
+    }
+
+    private static String buildSandboxStep1UserPayload(
+            List<ConversationMessage> userSlice,
+            SandboxClassificationResult hint,
+            int maxCharsPerUserBody,
+            SandboxDeliberationScene explicitScene
+    ) {
         StringBuilder sb = new StringBuilder();
         sb.append("### 沙盘步骤① 状态\n");
+        SandboxDeliberationScene scene = null;
         if (hint == null) {
             sb.append("- 尚未达到「可高信心分诊」门槛：系统未写入审议室；请根据用户已写内容追问，帮助其形成可分诊的决策议题。\n");
         } else {
-            SandboxDeliberationScene sc = hint.scene();
+            scene = hint.scene();
             sb.append("- 分诊返回 **LOW** 信心：暂不正式入室。以下「暂定审议室/摘要」仅供你设计追问时参考，**不要**对用户断言「你一定会进这间室」。\n");
             sb.append("- 暂定审议室：")
-                    .append(SandboxAgoraRouteCard.roomTitle(sc))
+                    .append(SandboxAgoraRouteCard.roomTitle(scene))
                     .append("（")
-                    .append(SandboxAgoraRouteCard.roomSubtitle(sc))
+                    .append(SandboxAgoraRouteCard.roomSubtitle(scene))
                     .append("）\n");
             String norm = hint.normalizedIssue() == null ? "" : hint.normalizedIssue().trim();
             sb.append("- 归一化议题摘要：").append(norm.isEmpty() ? "（无）" : norm).append("\n");
         }
-        sb.append("\n### 用户发言摘录（旧→新，仅用户句）\n");
+        // 若传入明确的审议室，覆盖分诊结果
+        if (explicitScene != null) {
+            scene = explicitScene;
+        }
+        // 注入审议室特有的维度库提示
+        if (scene != null) {
+            sb.append("\n");
+            sb.append(SandboxClarifyDimensionLibrary.generateDimensionHint(scene));
+        }
+        sb.append("### 用户发言摘录（旧→新，仅用户句）\n");
         int cap = Math.max(200, Math.min(maxCharsPerUserBody, USER_TRANSCRIPT_MAX));
         for (ConversationMessage m : userSlice) {
             String body = truncate(m.content() == null ? "" : m.content(), cap);

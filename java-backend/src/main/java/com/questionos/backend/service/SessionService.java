@@ -202,7 +202,7 @@ public class SessionService {
                     return Optional.of(userMessage.messageId());
                 }
                 if (!isIssueClearForStep2(issue)) {
-                    String followMd = mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, null);
+                    String followMd = mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, null, null);
                     boolean clarifyOk = followMd != null && !followMd.isBlank();
                     int clarifyChars = followMd == null ? 0 : followMd.length();
                     String blockMd = SandboxClassifyCard.markdownIssueNotYetConcrete(issue, followMd);
@@ -268,7 +268,7 @@ public class SessionService {
                     ? classificationSnapshot
                     : SandboxClassificationResult.fromSceneOnly(sc);
             String followMd = needClarificationFirst
-                    ? mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, classificationSnapshot)
+                    ? mainCalibrateAgent.generateSandboxStep1ClarifyFollowup(history, classificationSnapshot, sc)
                     : "";
             boolean step1ClarifyGenerated = followMd != null && !followMd.isBlank();
             int step1ClarifyChars = followMd == null ? 0 : followMd.length();
