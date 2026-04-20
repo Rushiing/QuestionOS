@@ -253,8 +253,8 @@ public class MainCalibrateAgent implements AgentExecutor {
                                 900,
                                 compactTimeoutSec)
                         .block(Duration.ofSeconds(blockWaitSec));
-                String md = formatCalibrationJson(raw == null ? "" : raw);
-                if (isAcceptableSandboxStep1ClarifyMd(md)) {
+                String lite = formatSandboxStep1ClarifyLite(raw == null ? "" : raw);
+                if (isAcceptableSandboxStep1Lite(lite)) {
                     if (attempt > 1) {
                         log.info(
                                 "sandbox step1 clarify succeeded on attempt {} tightPayload={} payloadChars={}",
@@ -262,22 +262,14 @@ public class MainCalibrateAgent implements AgentExecutor {
                                 tightPayload,
                                 payload.length());
                     }
-                    return md.trim();
-                }
-                String stitched = tryPrependQuestionFromRawJson(raw, md);
-                if (stitched != null && isAcceptableSandboxStep1ClarifyMd(stitched)) {
-                    log.info(
-                            "sandbox step1 clarify: prepended question from raw JSON on attempt {} tightPayload={}",
-                            attempt,
-                            tightPayload);
-                    return stitched.trim();
+                    return lite.trim();
                 }
                 log.warn(
-                        "sandbox step1 clarify attempt {}/{} unusable tightPayload={} lenMd={} rawSnippet={}",
+                        "sandbox step1 clarify attempt {}/{} unusable tightPayload={} liteLen={} rawSnippet={}",
                         attempt,
                         maxAttempts,
                         tightPayload,
-                        md == null ? -1 : md.length(),
+                        lite == null ? -1 : lite.length(),
                         raw == null ? "" : safeSnippet(raw, 200));
             } catch (Exception e) {
                 lastException = e;
@@ -297,10 +289,53 @@ public class MainCalibrateAgent implements AgentExecutor {
             log.error("sandbox step1 clarify exhausted {} attempts (last error)", maxAttempts, lastException);
         } else {
             log.error(
-                    "sandbox step1 clarify exhausted {} attempts: model returned no acceptable markdown",
+                    "sandbox step1 clarify exhausted {} attempts: model returned no JSON usable for step1 lite card",
                     maxAttempts);
         }
         return "";
+    }
+
+    /**
+     * 步骤①卡片仅需「本轮追问 + 追问理由」：从模型 JSON 抽取，不生成阶段/理解确认/建议清单等。
+     */
+    public String formatSandboxStep1ClarifyLite(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        try {
+            String trimmed = stripMarkdownFence(raw.trim());
+            int start = trimmed.indexOf('{');
+            int end = trimmed.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return "";
+            }
+            JsonNode root = objectMapper.readTree(trimmed.substring(start, end + 1));
+            JsonNode questions = root.get("questions");
+            if (questions == null || !questions.isArray() || questions.isEmpty()) {
+                return "";
+            }
+            String q = "";
+            for (int i = 0; i < questions.size(); i++) {
+                q = textOrEmpty(questions.get(i));
+                if (!q.isBlank()) {
+                    break;
+                }
+            }
+            if (q.isBlank()) {
+                return "";
+            }
+            String reasoning = root.hasNonNull("reasoning") ? root.get("reasoning").asText().trim() : "";
+            if (reasoning.isEmpty()) {
+                reasoning = "（模型未返回追问理由）";
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("## 本轮追问\n\n");
+            appendBlockquotedParagraph(sb, q);
+            sb.append("\n### 追问理由\n\n").append(reasoning).append("\n");
+            return sb.toString();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private static void sleepQuiet(long ms) {
@@ -311,51 +346,14 @@ public class MainCalibrateAgent implements AgentExecutor {
         }
     }
 
-    private static boolean isAcceptableSandboxStep1ClarifyMd(String md) {
-        if (md == null || md.isBlank()) {
+    private static boolean isAcceptableSandboxStep1Lite(String lite) {
+        if (lite == null || lite.isBlank()) {
             return false;
         }
-        if (md.length() < 24) {
+        if (lite.length() < 20) {
             return false;
         }
-        return md.contains("本轮追问")
-                || md.contains("### 阶段")
-                || md.contains("### 理解确认")
-                || md.contains("## 本轮追问");
-    }
-
-    /**
-     * 若 raw JSON 里仍有 questions[0]，但 Markdown _formatter 未生成「本轮追问」区块，则手动补上。
-     */
-    private String tryPrependQuestionFromRawJson(String raw, String formattedMd) {
-        if (raw == null || raw.isBlank() || formattedMd == null) {
-            return null;
-        }
-        try {
-            String trimmed = stripMarkdownFence(raw.trim());
-            int start = trimmed.indexOf('{');
-            int end = trimmed.lastIndexOf('}');
-            if (start < 0 || end <= start) {
-                return null;
-            }
-            JsonNode root = objectMapper.readTree(trimmed.substring(start, end + 1));
-            JsonNode questions = root.get("questions");
-            if (questions == null || !questions.isArray() || questions.isEmpty()) {
-                return null;
-            }
-            String q = textOrEmpty(questions.get(0));
-            if (q.isBlank()) {
-                return null;
-            }
-            StringBuilder sb = new StringBuilder();
-            sb.append("---\n\n## 本轮追问\n\n");
-            appendBlockquotedParagraph(sb, q);
-            sb.append("\n---\n\n");
-            sb.append(formattedMd.trim());
-            return sb.toString();
-        } catch (Exception ignored) {
-            return null;
-        }
+        return lite.contains("## 本轮追问") && lite.contains("### 追问理由");
     }
 
     private static String safeSnippet(String s, int max) {
