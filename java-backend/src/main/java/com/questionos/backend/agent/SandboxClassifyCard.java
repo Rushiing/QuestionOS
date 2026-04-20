@@ -4,8 +4,9 @@ package com.questionos.backend.agent;
  * 沙盘步骤 ①：议题确认与进入 Agora 审议室（在「审议路由」卡片之前展示）。
  * 卡片仅保留四块：本轮追问、追问理由、分诊信心、进入审议室。
  *
- * <p>第三块标题仍为「分诊信心」，内容为<strong>与用户可见后果对齐</strong>的短句（非单字糊弄）：
- * 区分「已调用分诊模型 + HIGH/LOW」与「未调用分诊（议题过简 / 无效输入）」等互斥状态；与第四块「进入审议室」是否待定相呼应。
+ * <p>第三块标题仍为「分诊信心」，内容为<strong>与用户可见后果对齐</strong>的短句：
+ * 区分「已调用分诊 + HIGH/LOW」「未调用分诊」；若 {@link SandboxClassificationResult#semanticIgnitionOverride()} 为 true，
+ * 表示分诊原为 LOW、经 {@link MainCalibrateAgent#isSandboxSemanticIgnitionReady(String, SandboxClassificationResult)} 语义点火升为 HIGH。
  */
 public final class SandboxClassifyCard {
     private SandboxClassifyCard() {}
@@ -57,7 +58,7 @@ public final class SandboxClassifyCard {
         SandboxDeliberationScene sc = r.scene();
         String roomTitle = SandboxAgoraRouteCard.roomTitle(sc);
         String roomSubtitle = SandboxAgoraRouteCard.roomSubtitle(sc);
-        String triageLine = triageLineAfterClassifier(r.confidence(), needClarification);
+        String triageLine = triageLineAfterClassifier(r.confidence(), needClarification, r.semanticIgnitionOverride());
         String firstTwo;
         if (needClarification) {
             if (calibrationFollowupMd != null && !calibrationFollowupMd.isBlank()) {
@@ -69,10 +70,17 @@ public final class SandboxClassifyCard {
                         + "大模型在多次重试后仍未返回可用 JSON（常见：超时、网关、上游空响应或格式不符）。追问只来自真模型，不会用本地模板冒充。\n";
             }
         } else {
-            firstTwo = "## 本轮追问\n\n"
-                    + "（无需额外追问。）\n\n"
-                    + "### 追问理由\n\n"
-                    + "当前分诊为**高信心**，将直接进入步骤②审议路由与多角色发言。\n";
+            if (r.semanticIgnitionOverride()) {
+                firstTwo = "## 本轮追问\n\n"
+                        + "（无需额外追问。）\n\n"
+                        + "### 追问理由\n\n"
+                        + "分诊模型对场景标签偏保守，但**语义把关**认定信息已足以启动沙盘；步骤②内多角色仍会继续追问细化。\n";
+            } else {
+                firstTwo = "## 本轮追问\n\n"
+                        + "（无需额外追问。）\n\n"
+                        + "### 追问理由\n\n"
+                        + "当前分诊为**高信心**，将直接进入步骤②审议路由与多角色发言。\n";
+            }
         }
         return joinStep1FourSections(firstTwo, triageLine, roomLineAssigned(roomTitle, roomSubtitle));
     }
@@ -88,9 +96,16 @@ public final class SandboxClassifyCard {
     }
 
     /** 已跑 {@link SandboxSceneClassifier} 之后的第三块文案（与 {@code r.confidence()}、是否需追问一致）。 */
-    private static String triageLineAfterClassifier(String confidence, boolean needClarification) {
+    private static String triageLineAfterClassifier(
+            String confidence,
+            boolean needClarification,
+            boolean semanticIgnitionOverride
+    ) {
         String c = confidence == null ? "" : confidence.trim().toUpperCase();
         if ("HIGH".equals(c) && !needClarification) {
+            if (semanticIgnitionOverride) {
+                return "高：语义判定已足以启动沙盘；分诊原为低信心，已用语义把关放行。";
+            }
             return "高：已分诊，可进入步骤②。";
         }
         if ("LOW".equals(c) && needClarification) {

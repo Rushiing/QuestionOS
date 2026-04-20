@@ -242,6 +242,15 @@ public class SessionService {
                 }
                 classificationSnapshot = sandboxSceneClassifier.classifyDetailed(issue);
                 boolean lowConfidence = "LOW".equalsIgnoreCase(classificationSnapshot.confidence());
+                if (lowConfidence && mainCalibrateAgent.isSandboxSemanticIgnitionReady(issue, classificationSnapshot)) {
+                    classificationSnapshot = classificationSnapshot.withSemanticIgnitionHigh();
+                    lowConfidence = false;
+                    log.info(
+                            "sandbox semantic ignition: upgraded LOW→HIGH sessionId={} turnId={} scene={}",
+                            sessionId,
+                            turnId,
+                            classificationSnapshot.scene());
+                }
                 needClarificationFirst = lowConfidence;
                 if (!needClarificationFirst) {
                     session.setSandboxDeliberationScene(classificationSnapshot.scene().name());
@@ -276,6 +285,7 @@ public class SessionService {
             classifyPayload.put("confidence", cr.confidence() == null ? "" : cr.confidence());
             classifyPayload.put("forcedSecondary", cr.forcedSecondary());
             classifyPayload.put("requiresClarification", needClarificationFirst);
+            classifyPayload.put("semanticIgnitionOverride", cr.semanticIgnitionOverride());
             classifyPayload.put("step1ClarifyGenerated", step1ClarifyGenerated);
             classifyPayload.put("step1ClarifyChars", step1ClarifyChars);
             classifyPayload.put("step", 1);

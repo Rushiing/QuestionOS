@@ -72,14 +72,15 @@ public class SandboxSceneClassifier {
      *       （信息过少或模型自评偏低，本回合不写入会话场景、不进步骤②）。</li>
      *   <li>LLM 调用失败走关键词兜底时，恒为 {@code LOW}。</li>
      * </ul>
-     * 进入步骤②仍要求本结果为 {@code HIGH} 且场景已写入会话（见
-     * {@link com.questionos.backend.service.SessionService}）。
-     * 步骤①卡片「分诊信心」块用自然语言复述上述后果，见 {@link SandboxClassifyCard}。
+     * 进入步骤②要求本结果为 {@code HIGH} 且场景已写入会话（见
+     * {@link com.questionos.backend.service.SessionService}）；若此处为 {@code LOW}，仍可能经
+     * {@link MainCalibrateAgent#isSandboxSemanticIgnitionReady(String, SandboxClassificationResult)} 语义点火升为 {@code HIGH}。
+     * 步骤①卡片「分诊信心」块见 {@link SandboxClassifyCard}。
      */
     public SandboxClassificationResult classifyDetailed(String issuePlainText) {
         String trimmed = issuePlainText == null ? "" : issuePlainText.trim();
         if (trimmed.isEmpty()) {
-            return new SandboxClassificationResult(SandboxDeliberationScene.GENERAL, "", "LOW", false);
+            return new SandboxClassificationResult(SandboxDeliberationScene.GENERAL, "", "LOW", false, false);
         }
         String snippet = trimmed.length() <= ISSUE_MAX ? trimmed : trimmed.substring(0, ISSUE_MAX) + "\n…（已截断）";
         try {
@@ -105,18 +106,18 @@ public class SandboxSceneClassifier {
                 boolean ambiguous = fromLlm == SandboxDeliberationScene.GENERAL || isLowConfidence(raw);
                 if (!ambiguous) {
                     log.info("sandbox scene classified by llm scene={} confidence={}", fromLlm, conf);
-                    return new SandboxClassificationResult(fromLlm, norm, conf, false);
+                    return new SandboxClassificationResult(fromLlm, norm, conf, false, false);
                 }
                 // 信息偏少或模型自评偏低：不再二次改场「强制入室」，交由步骤①清晰度门槛与 LOW 分支处理
                 log.info("sandbox scene classified by llm scene={} confidence=LOW(stay-step1-if-needed)", fromLlm);
-                return new SandboxClassificationResult(fromLlm, norm, "LOW", false);
+                return new SandboxClassificationResult(fromLlm, norm, "LOW", false, false);
             }
         } catch (Exception e) {
             log.warn("sandbox scene llm classify failed: {}", e.toString());
         }
         SandboxDeliberationScene fb = keywordFallback(trimmed);
         log.info("sandbox scene fallback keyword scene={}", fb);
-        return new SandboxClassificationResult(fb, extractNormalizedIssue(null, trimmed), "LOW", false);
+        return new SandboxClassificationResult(fb, extractNormalizedIssue(null, trimmed), "LOW", false, false);
     }
 
     private JsonNode parseJsonObject(String raw) {

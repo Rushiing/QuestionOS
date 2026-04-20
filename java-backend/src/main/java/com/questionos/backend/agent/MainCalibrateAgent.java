@@ -118,6 +118,25 @@ public class MainCalibrateAgent implements AgentExecutor {
             {"calibration_mode":"decision","phase":"scenario_confirm","scenario_echo":"","fuzzy_focus":"","questions":["请先简单说：你现在最纠结或最卡住的一件事是什么？用一两句话就够。"],"polanyi_strategy":null,"user_conclusion_mirror":"","detected_biases":[],"clarity_change":0.0,"reasoning":"降级占位：模型调用失败","suggested_direction":"检查 LLM 配置后重试"}
             """;
 
+    /** 分诊为 LOW 时：用语义判断是否已足以启动沙盘（步骤②内仍会继续发问）。 */
+    private static final String SANDBOX_SEMANTIC_IGNITION_SYSTEM = """
+            你是 QuestionOS 沙盘 Agora 的「入室语义把关」，只做一件事：判断当前用户累积发言是否**已足以启动沙盘推演（步骤②）**。
+
+            ## 标准（必须遵守）
+            - 进入步骤②后，多角色在沙盘里**仍会持续追问、细化**，因此这里**不要求**信息完美或穷尽。
+            - ready=true：能识别用户在决策/纠结的**对象或情境**，并有可下嘴的**具体锚点**（取舍、风险、时间压力、多方利益、技术/关系细节等至少其一可辨识）。
+            - ready=false：仍像空泛试探、无决策张力、或关键追问**完全未被用户接住**（通读多轮用户句后判断）。
+
+            ## 与分诊室自评
+            - 分诊 JSON 可能保守标 LOW；只要你认为**已可严肃开沙盘**，仍应 ready=true。
+
+            ## 输出
+            仅输出一个合法 JSON 对象，不要代码块、不要前后缀文字：
+            {"ready":true}
+            或
+            {"ready":false}
+            """;
+
     private final OpenClawInvokeService invokeService;
     private final ObjectMapper objectMapper;
 
@@ -293,6 +312,64 @@ public class MainCalibrateAgent implements AgentExecutor {
                     maxAttempts);
         }
         return "";
+    }
+
+    /**
+     * 当 {@link SandboxSceneClassifier} 对议题返回 {@code LOW} 时，用语义判断是否**已足以启动沙盘推演**；
+     * 为 true 时由 {@link com.questionos.backend.service.SessionService} 将结果升为 {@code HIGH} 并写入场景、发步骤②。
+     * 门槛为「可开严肃沙盘」，与「分诊室对场景标签的统计把握」不同；沙盘内仍会继续发问。
+     */
+    public boolean isSandboxSemanticIgnitionReady(
+            String combinedUserIssue,
+            SandboxClassificationResult classifierHint
+    ) {
+        String issue = combinedUserIssue == null ? "" : combinedUserIssue.trim();
+        if (issue.isBlank()) {
+            return false;
+        }
+        String snippet = issue.length() > 2400 ? issue.substring(0, 2400) + "\n…（已截断）" : issue;
+        String hint = classifierHint == null ? "" : classifierHint.normalizedIssue();
+        hint = hint == null ? "" : hint.trim();
+        StringBuilder user = new StringBuilder();
+        if (!hint.isBlank()) {
+            user.append("【分诊归一化议题（参考，可不全对）】\n").append(hint).append("\n\n");
+        }
+        user.append("【用户全部发言（按时间拼接，可能多轮）】\n").append(snippet);
+        try {
+            String raw = invokeService
+                    .invokeDefaultLlmCompact(
+                            SANDBOX_SEMANTIC_IGNITION_SYSTEM,
+                            user.toString(),
+                            "sandbox:semantic-ignition",
+                            48,
+                            18)
+                    .block(Duration.ofSeconds(26));
+            boolean ok = parseSemanticIgnitionReady(raw);
+            log.info("sandbox semantic ignition ready={} userChars={}", ok, snippet.length());
+            return ok;
+        } catch (Exception e) {
+            log.warn("sandbox semantic ignition invoke failed: {}", e.toString());
+            return false;
+        }
+    }
+
+    private boolean parseSemanticIgnitionReady(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        try {
+            String trimmed = stripMarkdownFence(raw.trim());
+            int start = trimmed.indexOf('{');
+            int end = trimmed.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return false;
+            }
+            JsonNode root = objectMapper.readTree(trimmed.substring(start, end + 1));
+            return root != null && root.has("ready") && root.get("ready").asBoolean(false);
+        } catch (Exception e) {
+            log.warn("sandbox semantic ignition parse failed: {}", e.toString());
+            return false;
+        }
     }
 
     /**
