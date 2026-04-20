@@ -4,14 +4,8 @@ package com.questionos.backend.agent;
  * 沙盘步骤 ①：议题确认与进入 Agora 审议室（在「审议路由」卡片之前展示）。
  * 卡片仅保留四块：本轮追问、追问理由、分诊信心、进入审议室。
  *
- * <p><b>「分诊信心」展示逻辑</b>（与 SSE payload 里的 {@code confidence} 字符串不必一致）：
- * <ul>
- *   <li>走 {@link SandboxSceneClassifier} 且已得到 {@link SandboxClassificationResult} 时：内部为 {@code HIGH} → 卡片写「高」；
- *       内部为 {@code LOW} → 卡片写「中」（表示未达入室门槛、与步骤②的 {@code HIGH} 区分，并非模型原文）。</li>
- *   <li>议题未过本地清晰度门槛（未调用分诊模型）→ 固定「中」。</li>
- *   <li>无意义输入拦截 → 固定「—」（无可分诊议题）。</li>
- * </ul>
- * 步骤①→②是否发审议路由仍仅取决于后端 {@code confidence == HIGH} 且非 GENERAL 等条件，与这里用「中」表示 LOW 无关。
+ * <p>第三块标题仍为「分诊信心」，内容为<strong>与用户可见后果对齐</strong>的短句（非单字糊弄）：
+ * 区分「已调用分诊模型 + HIGH/LOW」与「未调用分诊（议题过简 / 无效输入）」等互斥状态；与第四块「进入审议室」是否待定相呼应。
  */
 public final class SandboxClassifyCard {
     private SandboxClassifyCard() {}
@@ -38,7 +32,7 @@ public final class SandboxClassifyCard {
 
     public static String markdownIssueNotYetConcrete(String combinedIssue, String calibrationFollowupMd) {
         String firstTwo = firstTwoSectionsForIssueNotConcrete(calibrationFollowupMd);
-        return joinStep1FourSections(firstTwo, "中", roomLinePending());
+        return joinStep1FourSections(firstTwo, triageLineIssueNotYetConcrete(), roomLinePending());
     }
 
     /** 输入噪声拦截：无可分诊议题。 */
@@ -56,19 +50,14 @@ public final class SandboxClassifyCard {
                 + "当前输入过短或像随机字符（例如 `"
                 + shown
                 + "`），无法可靠分诊。\n";
-        return joinStep1FourSections(firstTwo, "—", roomLinePending());
+        return joinStep1FourSections(firstTwo, triageLineInvalidInput(), roomLinePending());
     }
 
     private static String markdown(SandboxClassificationResult r, boolean needClarification, String calibrationFollowupMd) {
         SandboxDeliberationScene sc = r.scene();
         String roomTitle = SandboxAgoraRouteCard.roomTitle(sc);
         String roomSubtitle = SandboxAgoraRouteCard.roomSubtitle(sc);
-        // 与 classify 事件里 r.confidence() 一致：HIGH/LOW；卡片上 LOW 刻意显示为「中」（见类注释）
-        String confLabel = switch (r.confidence() == null ? "" : r.confidence().toUpperCase()) {
-            case "HIGH" -> "高";
-            case "LOW" -> "中";
-            default -> "—";
-        };
+        String triageLine = triageLineAfterClassifier(r.confidence(), needClarification);
         String firstTwo;
         if (needClarification) {
             if (calibrationFollowupMd != null && !calibrationFollowupMd.isBlank()) {
@@ -85,7 +74,7 @@ public final class SandboxClassifyCard {
                     + "### 追问理由\n\n"
                     + "当前分诊为**高信心**，将直接进入步骤②审议路由与多角色发言。\n";
         }
-        return joinStep1FourSections(firstTwo, confLabel, roomLineAssigned(roomTitle, roomSubtitle));
+        return joinStep1FourSections(firstTwo, triageLine, roomLineAssigned(roomTitle, roomSubtitle));
     }
 
     private static String firstTwoSectionsForIssueNotConcrete(String calibrationFollowupMd) {
@@ -98,11 +87,37 @@ public final class SandboxClassifyCard {
                 + "议题尚未达到「可高信心分诊」门槛；单字敷衍或「不知道」类回答无法入室。\n";
     }
 
+    /** 已跑 {@link SandboxSceneClassifier} 之后的第三块文案（与 {@code r.confidence()}、是否需追问一致）。 */
+    private static String triageLineAfterClassifier(String confidence, boolean needClarification) {
+        String c = confidence == null ? "" : confidence.trim().toUpperCase();
+        if ("HIGH".equals(c) && !needClarification) {
+            return "高：已分诊，可进入步骤②。";
+        }
+        if ("LOW".equals(c) && needClarification) {
+            return "低：已分诊，把握不足；先完成追问，再次发送会重新分诊。";
+        }
+        if ("LOW".equals(c)) {
+            return "低：已分诊，把握不足；当前不入室。";
+        }
+        if ("HIGH".equals(c)) {
+            return "高：已分诊；若未出现步骤②，请重试。";
+        }
+        return "未知：分诊字段异常，请重试。";
+    }
+
+    private static String triageLineIssueNotYetConcrete() {
+        return "未分诊：议题过简，尚未调用分诊模型。";
+    }
+
+    private static String triageLineInvalidInput() {
+        return "未分诊：输入无效，无法分诊。";
+    }
+
     /** 四段顺序：本轮追问与追问理由（已由上游拼好）→ 分诊信心 → 进入审议室 */
-    private static String joinStep1FourSections(String firstTwoMarkdown, String confidenceLabel, String roomBody) {
+    private static String joinStep1FourSections(String firstTwoMarkdown, String triageSectionBody, String roomBody) {
         return firstTwoMarkdown.trim()
                 + "\n\n### 分诊信心\n\n"
-                + confidenceLabel
+                + triageSectionBody
                 + "\n\n### 进入审议室\n\n"
                 + roomBody.trim()
                 + "\n";

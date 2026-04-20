@@ -74,6 +74,7 @@ public class SandboxSceneClassifier {
      * </ul>
      * 进入步骤②仍要求本结果为 {@code HIGH} 且场景已写入会话（见
      * {@link com.questionos.backend.service.SessionService}）。
+     * 步骤①卡片「分诊信心」块用自然语言复述上述后果，见 {@link SandboxClassifyCard}。
      */
     public SandboxClassificationResult classifyDetailed(String issuePlainText) {
         String trimmed = issuePlainText == null ? "" : issuePlainText.trim();
