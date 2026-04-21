@@ -366,10 +366,15 @@ public class AgentOrchestrator {
             SandboxDeliberationScene scene,
             String phaseBlock
     ) {
-        return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
+        String isIndependentAnalysis = phaseBlock != null && phaseBlock.contains("独立分析") ? "是" : "否";
+        String msg = formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
                 + "\n---\n\n现在轮到你了。从**你的角色立场**出发，**直指上文「用户核心议题」中的具体目标、约束、利益相关方、时间或内在矛盾**发起挑战或追问；"
                 + "须遵守上文「本轮审议阶段」：独立分析轮匿名化引用；交叉审查轮必须点名交锋并尝试合题。"
-                + "禁止只输出与用户议题无关的通用管理话术。\n";
+                + "禁止只输出与用户议题无关的通用管理话术。";
+        if ("是".equals(isIndependentAnalysis)) {
+            msg += "\n\n**首先**用一句话总结你的核心观点/建议方向（便于读者快速抓住重点），然后按你的指定输出格式完整展开分析。";
+        }
+        return msg + "\n";
     }
 
     private String buildIntegratorUserMessage(

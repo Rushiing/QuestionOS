@@ -22,7 +22,7 @@ interface Agent {
   role: string;
 }
 
-/** 与后端 Agora 六室一致（不含 GENERAL 统筹兜底，避免与「六室」展示混淆） */
+/** 沙盘六大审议室（不含兜底类，避免与「六室」展示混淆） */
 const SANDBOX_DELIBERATION_ROOMS: Agent[] = [
   { id: 'BUSINESS', name: '集市', avatar: '📈', description: '商业与战略', role: 'sandbox' },
   { id: 'ENGINEERING', name: '锻造坊', avatar: '⚙️', description: '工程与架构', role: 'sandbox' },

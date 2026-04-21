@@ -2,7 +2,7 @@ package com.questionos.backend.agent;
 
 /**
  * 与 v0.2/backend/app/agents/registry.py 中 AVAILABLE_AGENTS 的 system_prompt 保持一致。
- * 沙盘 user 侧另由 {@link AgentOrchestrator} 注入「审议场景 + 独立分析/交叉审查阶段」说明，与场景分类器配合。
+ * 沙盘 user 侧另由 {@link AgentOrchestrator} 注入「审议室场景 + 独立分析/交叉审查阶段」说明，与场景分类器配合。
  */
 public final class SandboxBuiltInPrompts {
     private SandboxBuiltInPrompts() {}

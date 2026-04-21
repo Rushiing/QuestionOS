@@ -75,14 +75,14 @@ public class MainCalibrateAgent implements AgentExecutor {
             """;
 
     /**
-     * 沙盘 Agora 步骤①：用与思维校准相同的 Decision JSON，再经 {@link #formatCalibrationJson(String)} 转成 Markdown，
+     * 沙盘第①阶段：用与思维校准相同的 Decision JSON，再经 {@link #formatCalibrationJson(String)} 转成 Markdown，
      * 嵌入「议题确认」卡片，替代固定三问模板。
      *
      * <p>该 prompt 由 {@link #buildSandboxStep1UserPayload(List, SandboxClassificationResult, int, SandboxDeliberationScene)}
      * 在运行时注入审议室特定的追问维度库，实现**场景感知的针对性追问**。
      */
     private static final String SANDBOX_STEP1_CLARIFY_PROMPT = """
-            你是「思维校准」式追问生成器，服务于 QuestionOS **沙盘推演 → Agora 步骤①**（议题仍在门口，未进入审议路由与多角色发言）。
+            你是「思维校准」式追问生成器，服务于 QuestionOS **沙盘推演第①阶段**（议题仍在门口，未进入审议室与多角色发言）。
 
             ## 目标
             通读下方用户发言、沙盘状态和**审议室特有的追问维度**，找出**当前最大信息缺口**，用 Decision 模式产出**唯一一个**可回答的核心问句，帮用户把「决策对象、关键约束或背景类型」钉清楚。
@@ -124,7 +124,7 @@ public class MainCalibrateAgent implements AgentExecutor {
 
     /** 分诊为 LOW 时：用语义判断是否已足以启动沙盘（步骤②内仍会继续发问）。 */
     private static final String SANDBOX_SEMANTIC_IGNITION_SYSTEM = """
-            你是 QuestionOS 沙盘 Agora 的「入室语义把关」，只做一件事：判断当前用户累积发言是否**已足以启动沙盘推演（步骤②）**。
+            你是 QuestionOS 沙盘的「入室语义把关」，只做一件事：判断当前用户累积发言是否**已足以启动沙盘推演（步骤②）**。
 
             ## 标准（必须遵守）
             - 进入步骤②后，多角色在沙盘里**仍会持续追问、细化**，因此这里**不要求**信息完美或穷尽。
