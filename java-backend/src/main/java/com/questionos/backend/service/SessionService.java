@@ -2,13 +2,16 @@ package com.questionos.backend.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.questionos.backend.agent.AdaptiveDepthGate;
 import com.questionos.backend.agent.AgentOrchestrator;
 import com.questionos.backend.agent.AgentReplyChunk;
+import com.questionos.backend.agent.ProblemDissolutionChecker;
 import com.questionos.backend.agent.SandboxAgoraRouteCard;
 import com.questionos.backend.agent.SandboxClassifyCard;
 import com.questionos.backend.agent.SandboxClassificationResult;
 import com.questionos.backend.agent.SandboxDeliberationScene;
 import com.questionos.backend.agent.MainCalibrateAgent;
+import com.questionos.backend.agent.SandboxProblemDissolutionCard;
 import com.questionos.backend.agent.SandboxSceneClassifier;
 import com.questionos.backend.integrations.AgentRegistryService;
 import com.questionos.backend.domain.ConversationMessage;
@@ -51,6 +54,8 @@ public class SessionService {
     private final SandboxSceneClassifier sandboxSceneClassifier;
     private final MainCalibrateAgent mainCalibrateAgent;
     private final AgentRegistryService agentRegistryService;
+    private final ProblemDissolutionChecker dissolutionChecker;
+    private final AdaptiveDepthGate adaptiveDepthGate;
 
     @Value("${questionos.session.titleFromLlm:false}")
     private boolean sessionTitleFromLlm;
@@ -69,7 +74,9 @@ public class SessionService {
             SessionSnapshotPersistence sessionPersistence,
             SandboxSceneClassifier sandboxSceneClassifier,
             MainCalibrateAgent mainCalibrateAgent,
-            AgentRegistryService agentRegistryService
+            AgentRegistryService agentRegistryService,
+            ProblemDissolutionChecker dissolutionChecker,
+            AdaptiveDepthGate adaptiveDepthGate
     ) {
         this.orchestrator = orchestrator;
         this.sessionTitleService = sessionTitleService;
@@ -78,6 +85,8 @@ public class SessionService {
         this.sandboxSceneClassifier = sandboxSceneClassifier;
         this.mainCalibrateAgent = mainCalibrateAgent;
         this.agentRegistryService = agentRegistryService;
+        this.dissolutionChecker = dissolutionChecker;
+        this.adaptiveDepthGate = adaptiveDepthGate;
     }
 
     @PostConstruct
@@ -291,6 +300,12 @@ public class SessionService {
             classifyPayload.put("step", 1);
             publishEvent(sessionId, turnId, "sandbox_classify", jsonPayload(classifyPayload));
             persistSnapshot(sessionId);
+            if (needClarificationFirst) {
+                String norm = cr.normalizedIssue();
+                if (norm != null && !norm.isBlank()) {
+                    maybeCheckAndEmitProblemDissolution(sessionId, turnId, norm, sc);
+                }
+            }
             log.info(
                     "sandbox classify card persisted+emitted sessionId={} turnId={} scene={} confidence={} forcedSecondary={} step1ClarifyGenerated={} step1ClarifyChars={}",
                     sessionId,
@@ -649,5 +664,38 @@ public class SessionService {
         } catch (JsonProcessingException e) {
             return "{\"content\":\"\"}";
         }
+    }
+
+    /** 问题溶解检测：非阻塞式可选检查，在步骤①中补充检测伪问题、XY问题等。 */
+    private void maybeCheckAndEmitProblemDissolution(
+            String sessionId,
+            long turnId,
+            String combinedIssue,
+            SandboxDeliberationScene scene
+    ) {
+        if (combinedIssue == null || combinedIssue.isBlank() || scene == null) {
+            return;
+        }
+        dissolutionChecker.checkAsync(combinedIssue, scene)
+                .timeout(Duration.ofSeconds(8))
+                .subscribe(
+                        result -> {
+                            if (result.hasIssues()) {
+                                String card = SandboxProblemDissolutionCard.markdown(result);
+                                if (card != null && !card.isBlank()) {
+                                    appendMessage(sessions.get(sessionId), MessageRole.AGENT, card, turnId,
+                                            "dissolution-check");
+                                    Map<String, Object> payload = new LinkedHashMap<>();
+                                    payload.put("content", card);
+                                    payload.put("hasDissolutionIssues", true);
+                                    publishEvent(sessionId, turnId, "dissolution_check",
+                                            jsonPayload(payload));
+                                    log.info("problem dissolution card emitted sessionId={} turnId={} scene={}",
+                                            sessionId, turnId, scene);
+                                }
+                            }
+                        },
+                        e -> log.debug("dissolution check failed/timeout (non-blocking): {}", e.toString())
+                );
     }
 }
