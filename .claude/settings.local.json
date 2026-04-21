@@ -15,7 +15,8 @@
       "Bash(cat)",
       "Bash(bash /tmp/check_deploy.sh)",
       "Bash(find java-backend/src -name \"*.java\" -type f -exec grep -l \"PostMapping.*chat\\\\|GetMapping.*chat\" {} \\\\;)",
-      "Bash(git commit -m 'fix\\(agent-invoke\\): Reduce third-party agent timeout to 60 seconds *)"
+      "Bash(git commit -m 'fix\\(agent-invoke\\): Reduce third-party agent timeout to 60 seconds *)",
+      "Bash(git commit -m 'debug\\(agent-invoke\\): Add detailed logging for agent response inspection *)"
     ]
   }
 }

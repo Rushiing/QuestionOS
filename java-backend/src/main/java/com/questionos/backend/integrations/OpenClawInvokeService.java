@@ -363,6 +363,18 @@ public class OpenClawInvokeService {
                                 String text = extractContent(raw);
                                 long extractMs = System.currentTimeMillis() - tParse;
                                 int outLen = text == null ? 0 : text.length();
+                                // 详细日志：显示原始响应和提取内容
+                                String rawSnippet = raw == null || raw.isBlank()
+                                        ? "(空响应)"
+                                        : raw.length() > 500 ? raw.substring(0, 500) + "..." : raw;
+                                String textSnippet = text == null || text.isBlank()
+                                        ? "(提取结果为空)"
+                                        : text.length() > 200 ? text.substring(0, 200) + "..." : text;
+                                log.warn(
+                                        "LLM response detail stage={} rawBody={} extractedText={}",
+                                        stage,
+                                        rawSnippet,
+                                        textSnippet);
                                 log.info(
                                         "LLM request done stage={} model={} ttfbMs={} bodyReadMs={} httpRoundTripMs={} rawBodyChars={} extractJsonMs={} textChars={}",
                                         stage,
