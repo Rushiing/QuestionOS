@@ -70,6 +70,43 @@ export default function HistoryPage() {
     return date.toLocaleDateString('zh-CN');
   };
 
+  const groupSessionsByDate = (sessions: Session[]) => {
+    const groups: { [key: string]: Session[] } = {};
+
+    sessions.forEach(session => {
+      const date = new Date(session.created_at);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      let groupKey = '';
+      if (date.toDateString() === today.toDateString()) {
+        groupKey = '今天';
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        groupKey = '昨天';
+      } else {
+        groupKey = date.toLocaleDateString('zh-CN', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      }
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(session);
+    });
+
+    return Object.entries(groups).sort(([keyA], [keyB]) => {
+      if (keyA === '今天') return -1;
+      if (keyB === '今天') return 1;
+      if (keyA === '昨天') return -1;
+      if (keyB === '昨天') return 1;
+      return new Date(keyB).getTime() - new Date(keyA).getTime();
+    });
+  };
+
   const handleContinue = (sessionId: string) => {
     markInternalChatNav();
     router.push(`/chat?session=${sessionId}`);
@@ -151,8 +188,14 @@ export default function HistoryPage() {
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {sessions.map((session) => (
+          <div className="space-y-6">
+            {groupSessionsByDate(sessions).map(([dateGroup, groupSessions]) => (
+              <div key={dateGroup}>
+                <h2 className="text-sm font-semibold text-slate-700 mb-2 px-2">
+                  {dateGroup}
+                </h2>
+                <div className="space-y-2">
+                  {groupSessions.map((session) => (
               <div
                 key={session.id}
                 className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-slate-300 transition-colors"
@@ -224,6 +267,9 @@ export default function HistoryPage() {
                     )}
                   </div>
                 )}
+                  </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
