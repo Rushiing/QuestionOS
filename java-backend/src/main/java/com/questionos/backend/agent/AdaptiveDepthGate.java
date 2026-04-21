@@ -20,7 +20,7 @@ public class AdaptiveDepthGate {
     private static final Logger log = LoggerFactory.getLogger(AdaptiveDepthGate.class);
 
     private static final String CONSENSUS_ASSESSMENT_SYSTEM = """
-            你是 Agora 审议的「深度门槛评估器」，在 Round 1 多角色独立分析后评估共识强度。
+            你是沙盘审议的「深度门槛评估器」，在 Round 1 多角色独立分析后评估共识强度。
             任务：阅读所有 Round 1 角色的分析，评估他们在**核心方向上的共识程度**。
 
             ## 三层共识等级

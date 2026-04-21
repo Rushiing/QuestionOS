@@ -21,7 +21,7 @@ public final class SandboxAgoraRouteCard {
         if (hasThirdPartyAgents) {
             sb.append("已接入 **外聘智能体**：将在轮转中与上述角度交替，补充外视角与追问。\n\n");
         }
-        sb.append("> 下列界面发言按上表**审议角度**与本室 Agora 轮转协议依次展开（已接外聘时穿插外视角）。\n\n");
+        sb.append("> 下列界面发言按上表**审议角度**与本室轮转协议依次展开（已接外聘时穿插外视角）。\n\n");
         sb.append("接下来进入 **多角色轮流拆解**，请先看第一位专家发言，再按需追问。\n");
         return sb.toString();
     }

@@ -18,7 +18,7 @@ public class ProblemDissolutionChecker {
     private static final Logger log = LoggerFactory.getLogger(ProblemDissolutionChecker.class);
 
     private static final String DISSOLUTION_SYSTEM = """
-            你是「问题溶解检测器」，Agora 审议系统第①步的质量把关。
+            你是「问题溶解检测器」，沙盘审议第①步的质量把关。
             任务：通读用户累积发言，检测**伪问题、XY问题、症状vs根因混淆、信息严重缺陷**。
 
             ## 三类检测（任一触发则需汇报）

@@ -19,7 +19,7 @@ public class SandboxSceneClassifier {
     private static final int ISSUE_MAX = 2400;
 
     private static final String CLASSIFY_SYSTEM = """
-            你是「Agora 审议室分诊员」。
+            你是「沙盘审议室分诊员」。
             任务：先判断用户议题是否可分类；若可分类，给出最匹配审议室。
             只输出一行合法 JSON，不要代码块、不要解释，格式严格为：
             {"scene":"GENERAL","confidence":"LOW","normalizedIssue":"..."}
