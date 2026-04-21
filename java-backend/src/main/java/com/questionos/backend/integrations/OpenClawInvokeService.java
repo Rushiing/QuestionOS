@@ -233,7 +233,8 @@ public class OpenClawInvokeService {
 
         Map<String, Object> body = newOpenAiChatBody(model, msgList, agent.endpoint(), false, -1);
 
-        Duration agentTimeout = Duration.ofSeconds(effectiveTimeoutSeconds(-1));
+        // 第三方 agent 的超时控制在 60 秒，避免前端长期等待
+        Duration agentTimeout = Duration.ofSeconds(effectiveTimeoutSeconds(60));
         return executeChatCompletions(
                 url,
                 body,

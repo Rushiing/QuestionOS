@@ -13,7 +13,9 @@
       "Bash(find . -name \"*.java\" -type f -exec grep -l \"\\\\.block\\(\\)\\\\|\\\\.blockFirst\\(\\)\\\\|\\\\.blockLast\\(\\)\" {} \\\\;)",
       "Bash(git commit -m 'fix\\(agent-onboarding\\): Remove blocking operations in probe endpoint *)",
       "Bash(cat)",
-      "Bash(bash /tmp/check_deploy.sh)"
+      "Bash(bash /tmp/check_deploy.sh)",
+      "Bash(find java-backend/src -name \"*.java\" -type f -exec grep -l \"PostMapping.*chat\\\\|GetMapping.*chat\" {} \\\\;)",
+      "Bash(git commit -m 'fix\\(agent-invoke\\): Reduce third-party agent timeout to 60 seconds *)"
     ]
   }
 }
