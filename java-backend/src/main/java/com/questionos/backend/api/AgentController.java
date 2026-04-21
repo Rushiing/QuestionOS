@@ -169,17 +169,17 @@ public class AgentController {
     }
 
     @PostMapping("/onboarding-jobs/{jobId}/submit")
-    public ResponseEntity<Map<String, Object>> submitOnboardingJob(
+    public Mono<ResponseEntity<Map<String, Object>>> submitOnboardingJob(
             @PathVariable String jobId,
             @RequestBody SubmitOnboardingJobRequest request,
             ServerHttpRequest httpRequest
     ) {
         var existing = onboardingJobService.find(jobId);
         if (existing.isEmpty()) {
-            return ResponseEntity.notFound().build();
+            return Mono.just(ResponseEntity.notFound().build());
         }
         if (!existing.get().submitToken().equals(request.submitToken())) {
-            return ResponseEntity.status(403).body(Map.of("status", "forbidden", "message", "submitToken 无效"));
+            return Mono.just(ResponseEntity.status(403).body(Map.of("status", "forbidden", "message", "submitToken 无效")));
         }
         onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.SUBMITTED, "Agent 已提交接入信息", request.agentId(), request.provider(), request.endpoint(), request.model());
         String scope = request.scope() == null || request.scope().isBlank() ? "sandbox:invoke" : request.scope();
@@ -190,35 +190,38 @@ public class AgentController {
         boolean needProbe = request.runProbe() == null || request.runProbe();
         if (!needProbe) {
             onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.REGISTERED, "接入实例创建成功（跳过联通测试）", request.agentId(), request.provider(), request.endpoint(), request.model());
-            return ResponseEntity.ok(Map.of("status", "registered", "jobId", jobId));
+            return Mono.just(ResponseEntity.ok(Map.of("status", "registered", "jobId", jobId)));
         }
 
-        String probeText;
-        try {
-            probeText = invokeService
-                    .invokeAgent(
-                            new AgentRegistryService.RegisteredAgent(
-                                    request.agentId(),
-                                    request.provider(),
-                                    request.endpoint(),
-                                    scope,
-                                    request.apiKey(),
-                                    request.model(),
-                                    java.time.Instant.now()
-                            ),
-                            "sess_probe_" + jobId,
-                            1,
-                            "请回复：联通成功"
-                    )
-                    .block(Duration.ofSeconds(20));
-            String msg = (probeText == null || probeText.isBlank()) ? "联通成功（返回为空）" : "联通成功：" + trimForUi(probeText, 120);
-            onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.VERIFIED, msg, request.agentId(), request.provider(), request.endpoint(), request.model());
-            return ResponseEntity.ok(Map.of("status", "verified", "jobId", jobId, "message", msg));
-        } catch (Exception e) {
-            String msg = "联通失败：" + e.getMessage();
-            onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.FAILED, msg, request.agentId(), request.provider(), request.endpoint(), request.model());
-            return ResponseEntity.status(502).body(Map.of("status", "failed", "jobId", jobId, "message", msg));
-        }
+        // 异步执行探活，不阻塞线程
+        return invokeService
+                .invokeAgent(
+                        new AgentRegistryService.RegisteredAgent(
+                                request.agentId(),
+                                request.provider(),
+                                request.endpoint(),
+                                scope,
+                                request.apiKey(),
+                                request.model(),
+                                java.time.Instant.now()
+                        ),
+                        "sess_probe_" + jobId,
+                        1,
+                        "请回复：联通成功"
+                )
+                .timeout(Duration.ofSeconds(20))
+                .flatMap(probeText -> {
+                    String msg = (probeText == null || probeText.isBlank()) ? "联通成功（返回为空）" : "联通成功：" + trimForUi(probeText, 120);
+                    onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.VERIFIED, msg, request.agentId(), request.provider(), request.endpoint(), request.model());
+                    Map<String, Object> responseBody = Map.of("status", (Object)"verified", "jobId", jobId, "message", msg);
+                    return Mono.just(ResponseEntity.ok(responseBody));
+                })
+                .onErrorResume(e -> {
+                    String msg = "联通失败：" + e.getMessage();
+                    onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.FAILED, msg, request.agentId(), request.provider(), request.endpoint(), request.model());
+                    Map<String, Object> responseBody = Map.of("status", (Object)"failed", "jobId", jobId, "message", msg);
+                    return Mono.just(ResponseEntity.status(502).body(responseBody));
+                });
     }
 
     @GetMapping("/onboarding-jobs/{jobId}/status")

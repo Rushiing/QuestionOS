@@ -9,7 +9,9 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
-      "Bash(git commit -m 'refactor\\(agent-onboarding\\): Simplify to delegation-focused UI *)"
+      "Bash(git commit -m 'refactor\\(agent-onboarding\\): Simplify to delegation-focused UI *)",
+      "Bash(find . -name \"*.java\" -type f -exec grep -l \"\\\\.block\\(\\)\\\\|\\\\.blockFirst\\(\\)\\\\|\\\\.blockLast\\(\\)\" {} \\\\;)",
+      "Bash(git commit -m 'fix\\(agent-onboarding\\): Remove blocking operations in probe endpoint *)"
     ]
   }
 }
