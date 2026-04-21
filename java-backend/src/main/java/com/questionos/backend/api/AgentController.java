@@ -133,6 +133,17 @@ public class AgentController {
         ));
     }
 
+    @PostMapping("/delegate")
+    public ResponseEntity<Map<String, Object>> delegateAgentOnboarding() {
+        var job = onboardingJobService.create();
+        return ResponseEntity.ok(Map.of(
+                "status", "pending",
+                "jobId", job.jobId(),
+                "submitToken", job.submitToken(),
+                "message", "委托任务已创建，Agent 将自动完成接入流程"
+        ));
+    }
+
     @GetMapping("/onboarding-jobs/{jobId}")
     public ResponseEntity<Map<String, Object>> onboardingJobInstruction(@PathVariable String jobId, ServerHttpRequest request) {
         return onboardingJobService.find(jobId)
