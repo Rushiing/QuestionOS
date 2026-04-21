@@ -8,7 +8,8 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")"
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(git commit -m 'refactor\\(agent-onboarding\\): Simplify to delegation-focused UI *)"
     ]
   }
 }
