@@ -973,6 +973,17 @@ function ChatPageContent() {
               <>
                 <button
                   type="button"
+                  onClick={() => router.push('/agent-onboarding')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-teal-50 rounded-lg transition-colors text-sm"
+                  title="接入第三方 Agent"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  接入
+                </button>
+                <button
+                  type="button"
                   onClick={() => router.push('/diagnostic')}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-teal-50 rounded-lg transition-colors text-sm"
                 >
