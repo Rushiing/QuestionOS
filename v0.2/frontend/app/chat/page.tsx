@@ -909,17 +909,52 @@ function ChatPageContent() {
     } catch (error) {
       if (timedOut) return;
       console.error('Error:', error);
-      const msg = error instanceof Error ? error.message : '未知错误';
-      const hint = msg === 'Failed to fetch'
-        ? '（请确认 Java WebFlux 后端已启动：cd java-backend && mvn spring-boot:run）'
-        : '';
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `抱歉，出了点问题：${msg}${hint}`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+
+      // 先尝试从后端获取最新消息——SSE 中途断开（network error / Failed to fetch / Load failed）时，
+      // 后端往往已经成功处理。把已生成的内容拉回来，比直接报错给用户友好得多。
+      let recoveredContent = '';
+      if (activeSessionId) {
+        try {
+          const msgList = await sandboxClient.listMessages(activeSessionId);
+          const latestAgent = [...msgList].reverse().find(
+            m => m.role === 'AGENT' && m.content?.trim()
+          );
+          if (latestAgent) {
+            recoveredContent = latestAgent.content;
+          }
+        } catch (fetchErr) {
+          console.warn('Failed to recover latest message after stream error:', fetchErr);
+        }
+      }
+
+      if (recoveredContent) {
+        // 后端已生成内容，直接显示恢复的回复，不需要给用户看错误
+        const recoveredMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: recoveredContent,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, recoveredMessage]);
+      } else {
+        // 真的失败了，给一个更友好的错误提示
+        const msg = error instanceof Error ? error.message : '未知错误';
+        const isNetworkLike =
+          msg === 'Failed to fetch' ||
+          msg.toLowerCase().includes('network') ||
+          msg.toLowerCase().includes('load failed');
+        const friendlyMsg = isNetworkLike
+          ? '网络连接中断了。请检查网络后再次发送（可以直接重发原内容）。'
+          : `出了点问题：${msg}`;
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: friendlyMsg,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+      setStreamingContent('');
       setStreamingSkeletonActive(false);
       setStreamingTypeTarget(null);
     } finally {
