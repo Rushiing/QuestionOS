@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiPath } from '../lib/runtime-config';
 import { useAuth } from './AuthProvider';
@@ -12,100 +12,162 @@ function resolveGoogleClientId(): string {
   return (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '').trim();
 }
 
+const GIS_SCRIPT_SRC = 'https://accounts.google.com/gsi/client';
+
+function loadGoogleScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('window 不可用（SSR 环境）'));
+      return;
+    }
+    if (window.google?.accounts?.id) {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GIS_SCRIPT_SRC}"]`);
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Google SDK 加载失败')), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = GIS_SCRIPT_SRC;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Google SDK 加载失败（网络受限？）'));
+    document.head.appendChild(script);
+  });
+}
+
 export function GoogleLoginButton() {
   const router = useRouter();
   const { setUserFromLogin } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [ready, setReady] = useState(false);
+  const buttonRef = useRef<HTMLDivElement>(null);
+  const initializedRef = useRef(false);
 
-  const handleGoogleLogin = () => {
-    const googleClientId = resolveGoogleClientId();
-    if (!googleClientId) {
-      alert('Google OAuth 未配置，请联系管理员');
+  const handleGoogleCallback = async (response: { credential?: string }) => {
+    if (!response?.credential) {
+      setError('Google 未返回凭证，请重试');
       return;
     }
-
-    // 动态加载 Google SDK
-    if (typeof window !== 'undefined' && !window.google) {
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = initializeGoogleSignIn;
-      document.head.appendChild(script);
-    } else if (window.google) {
-      initializeGoogleSignIn();
-    }
-  };
-
-  const initializeGoogleSignIn = () => {
-    const googleClientId = resolveGoogleClientId();
-    try {
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleCallback,
-        auto_select: false,
-      });
-
-      // 弹出 Google 登录窗口
-      window.google.accounts.id.prompt((notification: any) => {
-        if (notification.isNotDisplayed()) {
-          // 如果弹窗被阻止，使用 One Tap 之外的备选方案
-          window.google.accounts.id.prompt();
-        }
-      });
-    } catch (error) {
-      console.error('Google Sign-In initialization error:', error);
-      alert('Google 登录初始化失败');
-    }
-  };
-
-  const handleGoogleCallback = async (response: any) => {
     setLoading(true);
-    
+    setError('');
     try {
-      // 发送 Google ID Token 到后端验证
       const res = await fetch(apiPath('/api/auth/google'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_token: response.credential }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
-        throw new Error(data.detail || 'Google 登录失败');
+        throw new Error(data.detail || data.message || 'Google 登录失败');
       }
-
       localStorage.setItem('token', data.access_token);
       setUserFromLogin(data.user);
-
       router.push('/');
-    } catch (error: any) {
-      console.error('Google login error:', error);
-      alert(error.message || 'Google 登录失败');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google 登录失败';
+      console.error('Google login error:', err);
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
+  // 加载 Google SDK 并初始化（仅一次）
+  useEffect(() => {
+    let cancelled = false;
+    const googleClientId = resolveGoogleClientId();
+    if (!googleClientId) {
+      setError('Google OAuth 未配置（NEXT_PUBLIC_GOOGLE_CLIENT_ID 为空）');
+      return;
+    }
+
+    loadGoogleScript()
+      .then(() => {
+        if (cancelled) return;
+        if (initializedRef.current) {
+          setReady(true);
+          return;
+        }
+        try {
+          window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: handleGoogleCallback,
+            auto_select: false,
+            ux_mode: 'popup',
+            use_fedcm_for_prompt: true,
+          });
+          initializedRef.current = true;
+          setReady(true);
+        } catch (err) {
+          console.error('Google Sign-In init error:', err);
+          setError('Google 登录初始化失败，请刷新页面重试');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Google SDK 加载失败:', err);
+          setError('无法加载 Google 登录组件，请检查网络后刷新重试');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // SDK 准备好后渲染 Google 官方按钮（点击后弹出标准 OAuth 弹窗，兼容 Safari / 第三方 cookie 受限场景）
+  useEffect(() => {
+    if (!ready || !buttonRef.current) return;
+    try {
+      // 清空容器，避免重复渲染
+      buttonRef.current.innerHTML = '';
+      window.google.accounts.id.renderButton(buttonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        type: 'standard',
+        text: 'signin_with',
+        shape: 'rectangular',
+        logo_alignment: 'left',
+        width: 320,
+      });
+    } catch (err) {
+      console.error('Google renderButton error:', err);
+      setError('Google 登录按钮渲染失败，请刷新页面重试');
+    }
+  }, [ready]);
+
   return (
-    <button
-      onClick={handleGoogleLogin}
-      disabled={loading}
-      className="w-full py-3 border border-slate-200 rounded-xl font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center gap-3 disabled:opacity-50"
-    >
-      <svg className="w-5 h-5" viewBox="0 0 24 24">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-      </svg>
-      {loading ? '登录中...' : '使用 Google 登录'}
-    </button>
+    <div className="w-full">
+      {/* Google 官方渲染的登录按钮容器 */}
+      <div
+        ref={buttonRef}
+        className="w-full flex justify-center min-h-[44px] items-center"
+        aria-busy={loading || !ready}
+      />
+
+      {/* 加载占位/状态 */}
+      {!ready && !error && (
+        <p className="mt-2 text-center text-xs text-slate-400">正在加载 Google 登录…</p>
+      )}
+      {loading && (
+        <p className="mt-2 text-center text-xs text-slate-500">正在登录…</p>
+      )}
+      {error && (
+        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
 
-// TypeScript 类型声明
 declare global {
   interface Window {
     google: any;
