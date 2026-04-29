@@ -828,12 +828,6 @@ export default function ConsultPage() {
                 重新开始
               </button>
             )}
-            <button
-              onClick={() => setDebugPanelOpen(v => !v)}
-              className="text-sm text-slate-500 hover:text-slate-700"
-            >
-              {debugPanelOpen ? '隐藏调试' : '调试开关'}
-            </button>
             <AuthButton />
           </div>
         </div>
@@ -938,140 +932,62 @@ export default function ConsultPage() {
                 </div>
               )}
               {integrationEntryOpen && (
-                <div className="mt-5 mx-auto max-w-xl bg-teal-50 border border-teal-200 rounded-xl p-4 text-sm text-teal-900">
-                  <div className="font-semibold mb-2">OpenClaw Agent 接入台</div>
-                  <p className="mb-3">推荐一键接入：创建委托单 → 发给 Agent 自动执行 → 本页自动更新结果。</p>
+                <div className="mt-5 mx-auto max-w-xl bg-teal-50 border border-teal-200 rounded-xl p-5 text-sm text-teal-900">
+                  <div className="font-semibold mb-1">OpenClaw Agent 一键委托</div>
+                  <p className="text-xs text-teal-700 mb-4">点击下方按钮生成接入委托单并复制到剪贴板，发给你的 OpenClaw Agent，它会自动完成接入与联通。</p>
+
                   {!isLoggedIn && (
                     <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                      当前未登录：可查看说明，但三方接入操作需要登录后继续。
-                    </div>
-                  )}
-                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    线上环境请填写「后端服务器可访问」的真实 endpoint / API Key / model（第三方模型提供方参数）。
-                    这里的 API Key 与 QuestionOS 的 sandbox token 不同，不要混用。
-                  </div>
-
-                  <div className="mb-3 flex gap-2 text-xs">
-                    <span className={`px-2 py-1 rounded ${onboardingStep >= 1 ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700'}`}>1. 创建实例</span>
-                    <span className={`px-2 py-1 rounded ${onboardingStep >= 2 ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700'}`}>2. 获取配置</span>
-                    <span className={`px-2 py-1 rounded ${onboardingStep >= 3 ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700'}`}>3. 联通测试</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2 mb-3">
-                    <input
-                      value={openClawAgentId}
-                      onChange={(e) => setOpenClawAgentId(e.target.value)}
-                      placeholder="Agent ID（留空可自动生成）"
-                      disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
-                    />
-                    <input
-                      value={openClawEndpoint}
-                      onChange={(e) => setOpenClawEndpoint(e.target.value)}
-                      placeholder="OpenClaw endpoint"
-                      disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
-                    />
-                    <input
-                      value={openClawApiKey}
-                      onChange={(e) => setOpenClawApiKey(e.target.value)}
-                      placeholder="OpenClaw API Key（例如 7182...）"
-                      disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
-                    />
-                    <input
-                      value={openClawModel}
-                      onChange={(e) => setOpenClawModel(e.target.value)}
-                      placeholder="OpenClaw model"
-                      disabled={!isLoggedIn}
-                      className="px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-900"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <button
-                      onClick={generateOneClickOnboarding}
-                      disabled={!isLoggedIn || isGeneratingOnboardingPacket}
-                      className="px-3 py-1.5 rounded-lg bg-teal-700 text-white hover:bg-teal-800 disabled:opacity-50"
-                    >
-                      {isGeneratingOnboardingPacket ? '生成中...' : '创建接入委托（复制给 Agent）'}
-                    </button>
-                    <button
-                      onClick={createOpenClawIntegration}
-                      disabled={!isLoggedIn || isCreatingIntegration}
-                      className="px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-                    >
-                      {isCreatingIntegration ? '创建中...' : '创建 OpenClaw 接入'}
-                    </button>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(openClawConfigText)}
-                      className="px-3 py-1.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-100"
-                    >
-                      复制接入配置
-                    </button>
-                    <button
-                      onClick={loadInstances}
-                      disabled={!isLoggedIn || loadingInstances}
-                      className="px-3 py-1.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-100 disabled:opacity-50"
-                    >
-                      {loadingInstances ? '刷新中...' : '刷新实例面板'}
-                    </button>
-                    <button
-                      onClick={runOpenClawConnectivityTest}
-                      disabled={!isLoggedIn || isTestingIntegration}
-                      className="px-3 py-1.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-100 disabled:opacity-50"
-                    >
-                      {isTestingIntegration ? '测试中...' : '运行联通测试'}
-                    </button>
-                  </div>
-
-                  <pre className="text-xs p-3 rounded bg-white border border-teal-200 text-teal-900 overflow-x-auto whitespace-pre-wrap mb-2">{openClawConfigText}</pre>
-                  {onboardingJobId && onboardingJobToken && onboardingInstructionUrl && (
-                    <pre className="text-xs p-3 rounded bg-white border border-teal-200 text-teal-900 overflow-x-auto whitespace-pre-wrap mb-2">
-{buildOneClickMessage(onboardingJobId, onboardingJobToken, onboardingInstructionUrl)}
-                    </pre>
-                  )}
-                  {onboardingJobStatus && (
-                    <div className="mt-2 text-xs rounded-lg p-2 border bg-teal-50 text-teal-800 border-teal-200">
-                      <div>委托状态：{onboardingJobStatus.status}</div>
-                      <div className="mt-1">说明：{onboardingJobStatus.message}</div>
-                      {onboardingJobStatus.agentId && (
-                        <div className="mt-1">Agent：{onboardingJobStatus.agentId} ({onboardingJobStatus.provider || '-'})</div>
-                      )}
+                      当前未登录：请先登录后继续。
                     </div>
                   )}
 
-                  {integrationHint && <p className="mt-1 text-xs text-teal-700">{integrationHint}</p>}
-                  {integrationResult && (
-                    <div className={`mt-2 text-xs rounded-lg p-2 border ${integrationResult.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                      <div>{integrationResult.message}</div>
-                      {integrationResult.firstChunkMs !== undefined && (
-                        <div className="mt-1">首包耗时: {integrationResult.firstChunkMs}ms / done: {String(!!integrationResult.hasDone)}</div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-3 bg-white border border-teal-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-xs font-semibold text-teal-800">OpenClaw 实例面板</div>
-                      <div className="text-xs text-teal-500">共 {instances.length} 个</div>
-                    </div>
-                    {instances.length === 0 ? (
-                      <div className="text-xs text-teal-500">暂无实例，先点击“创建 OpenClaw 接入”。</div>
+                  <button
+                    onClick={generateOneClickOnboarding}
+                    disabled={!isLoggedIn || isGeneratingOnboardingPacket}
+                    className="w-full px-4 py-3 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                  >
+                    {isGeneratingOnboardingPacket ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        生成中...
+                      </>
                     ) : (
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                      <>
+                        <span>⚡</span>
+                        生成接入委托单（自动复制）
+                      </>
+                    )}
+                  </button>
+
+                  {integrationHint && (
+                    <p className="mt-3 text-xs text-teal-700">{integrationHint}</p>
+                  )}
+
+                  {onboardingJobStatus && (
+                    <div className="mt-3 text-xs rounded-lg p-3 border bg-white border-teal-200">
+                      <div className="font-medium text-teal-800 mb-1">委托状态：{onboardingJobStatus.status}</div>
+                      <div className="text-teal-700">{onboardingJobStatus.message}</div>
+                      {onboardingJobStatus.agentId && (
+                        <div className="mt-1 text-teal-600">Agent: {onboardingJobStatus.agentId}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {instances.length > 0 && (
+                    <div className="mt-3 bg-white border border-teal-200 rounded-lg p-3">
+                      <div className="text-xs font-semibold text-teal-800 mb-2">已接入实例（共 {instances.length} 个）</div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
                         {instances.map((item) => (
-                          <div key={item.agentId} className="text-xs border border-teal-100 rounded p-2">
-                            <div className="font-medium text-teal-900">{item.agentId}</div>
-                            <div className="text-teal-700">provider: {item.provider} | scope: {item.scope}</div>
-                            <div className="text-teal-600 truncate">endpoint: {item.endpoint}</div>
-                            <div className="text-teal-500">model: {item.model || '-'}</div>
-                            <div className="text-teal-500">registered: {new Date(item.registeredAt).toLocaleString('zh-CN')}</div>
+                          <div key={item.agentId} className="text-xs text-teal-700 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span className="font-medium text-teal-900">{item.agentId}</span>
+                            <span className="text-teal-500">({item.provider})</span>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -17,7 +17,13 @@
       "Bash(find java-backend/src -name \"*.java\" -type f -exec grep -l \"PostMapping.*chat\\\\|GetMapping.*chat\" {} \\\\;)",
       "Bash(git commit -m 'fix\\(agent-invoke\\): Reduce third-party agent timeout to 60 seconds *)",
       "Bash(git commit -m 'debug\\(agent-invoke\\): Add detailed logging for agent response inspection *)",
-      "Bash(git commit -m 'feat\\(agent-delegate\\): Add delegation endpoint for one-click agent onboarding *)"
+      "Bash(git commit -m 'feat\\(agent-delegate\\): Add delegation endpoint for one-click agent onboarding *)",
+      "Read(//private/tmp/cybermomo/**)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p src/routes src/models src/services)",
+      "Bash(npm create *)",
+      "Bash(timeout 5 npm start)",
+      "Bash(python3 compare_models.py)"
     ]
   }
 }

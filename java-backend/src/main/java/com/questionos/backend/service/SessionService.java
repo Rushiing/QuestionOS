@@ -157,10 +157,14 @@ public class SessionService {
     }
 
     public List<ConversationSession> listSessions(String ownerUserId) {
-        return sessions.values().stream()
+        int totalInMemory = sessions.size();
+        List<ConversationSession> filtered = sessions.values().stream()
                 .filter(s -> s.getOwnerUserId().equals(ownerUserId))
                 .sorted(Comparator.comparing(ConversationSession::getCreatedAt).reversed())
                 .toList();
+        log.info("listSessions ownerUserId={} totalInMemory={} matchedForUser={}",
+                ownerUserId, totalInMemory, filtered.size());
+        return filtered;
     }
 
     public List<ConversationMessage> listMessages(String sessionId) {
