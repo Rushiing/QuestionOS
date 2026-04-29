@@ -166,13 +166,17 @@ public class AgentController {
                                     "provider", "required, OpenClaw",
                                     "endpoint", "required",
                                     "scope", "optional, default sandbox:invoke",
-                                    "apiKey", "optional",
+                                    "apiKey", "REQUIRED if your endpoint enforces Bearer auth — pass YOUR endpoint's API key here so QuestionOS can call you back. Leave empty only if endpoint accepts unauthenticated requests.",
                                     "model", "optional",
                                     "runProbe", "optional, default true"
                             ),
                             "successCriteria", List.of(
                                     "status 最终为 VERIFIED",
                                     "message 包含联通成功"
+                            ),
+                            "commonFailures", List.of(
+                                    "如果探活返回 LLM HTTP 401: Unauthorized → 你提交时漏填了 apiKey，但你的 endpoint 要求 Bearer auth。重新 submit 并填入正确的 apiKey 即可。",
+                                    "如果探活返回 LLM HTTP 408: Request Timeout → 你的 endpoint 没有及时响应。检查你的服务是否在线。"
                             )
                     ));
                 })
@@ -228,7 +232,19 @@ public class AgentController {
                     return Mono.just(ResponseEntity.ok(responseBody));
                 })
                 .onErrorResume(e -> {
-                    String msg = "联通失败：" + e.getMessage();
+                    String rawErr = e.getMessage() == null ? e.toString() : e.getMessage();
+                    String hint = "";
+                    if (rawErr.contains("HTTP 401") || rawErr.toLowerCase().contains("unauthorized")) {
+                        boolean apiKeyMissing = request.apiKey() == null || request.apiKey().isBlank();
+                        hint = apiKeyMissing
+                                ? "（提示：你的 endpoint 要求 Bearer 鉴权，但 submit 时 apiKey 为空。请在 submit 时填入你 endpoint 的 API Key。）"
+                                : "（提示：apiKey 已传但被拒绝，请确认 key 是否正确、是否过期、endpoint 是否匹配。）";
+                    } else if (rawErr.contains("HTTP 408") || rawErr.toLowerCase().contains("timeout")) {
+                        hint = "（提示：endpoint 没有及时响应，请确认你的服务在线且可达。）";
+                    } else if (rawErr.contains("HTTP 503")) {
+                        hint = "（提示：endpoint 不可用，请检查隧道/服务是否运行。）";
+                    }
+                    String msg = "联通失败：" + rawErr + hint;
                     onboardingJobService.updateStatus(jobId, OnboardingJobService.JobStatus.FAILED, msg, request.agentId(), request.provider(), request.endpoint(), request.model());
                     Map<String, Object> responseBody = Map.of("status", (Object)"failed", "jobId", jobId, "message", msg);
                     return Mono.just(ResponseEntity.status(502).body(responseBody));

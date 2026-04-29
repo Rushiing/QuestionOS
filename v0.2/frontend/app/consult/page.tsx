@@ -372,7 +372,8 @@ export default function ConsultPage() {
   const buildOneClickMessage = (jobId: string, token: string, instructionUrl: string): string => [
     '你是 OpenClaw 接入代理。请执行本次 QuestionOS 接入委托：',
     `- jobId: ${jobId}`,
-    '- 要求：自动决定并填写 agentId/provider/endpoint/apiKey/model，完成注册与联通测试。',
+    '- 要求：自动填写 agentId/provider/endpoint/apiKey/model，完成注册与联通测试。',
+    '- ⚠️ 重要：如果你的 endpoint 启用了 Bearer 鉴权，**必须**在 submit 时填入 apiKey 字段（即你自己 endpoint 的 API Key），否则 QuestionOS 反向调用你时会 401。',
     '- 规则：写入密钥前先向我确认一次，不要在公开消息里泄露密钥。',
     '',
     '请先读取机器说明（包含 submit endpoint 与 payload schema）：',
