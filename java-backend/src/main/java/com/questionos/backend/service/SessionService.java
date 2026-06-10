@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -89,26 +90,46 @@ public class SessionService {
         this.adaptiveDepthGate = adaptiveDepthGate;
     }
 
+    private static final int HYDRATION_MAX_ATTEMPTS = 10;
+    private static final Duration HYDRATION_RETRY_DELAY = Duration.ofSeconds(5);
+
     @PostConstruct
     void hydrateSessionsFromPersistence() {
         if (!sessionPersistence.isEnabled()) {
             return;
         }
+        // Railway 冷启动时 Java 与 Postgres 并行拉起，瞬时连不上是常态：必须重试。
+        // 重试耗尽则快速失败让容器重启——带着"失忆"假装健康会让用户历史静默消失（2026-04 实际发生过）。
+        List<SessionSnapshotPersistence.LoadedSession> loaded = null;
+        for (int attempt = 1; loaded == null; attempt++) {
+            try {
+                loaded = sessionPersistence.loadAll();
+            } catch (Exception e) {
+                log.warn("session hydration attempt {}/{} failed: {}", attempt, HYDRATION_MAX_ATTEMPTS, e.toString());
+                if (attempt >= HYDRATION_MAX_ATTEMPTS) {
+                    throw new IllegalStateException(
+                            "session hydration failed after " + HYDRATION_MAX_ATTEMPTS + " attempts; failing fast so the container restarts", e);
+                }
+                try {
+                    Thread.sleep(HYDRATION_RETRY_DELAY.toMillis());
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("session hydration interrupted", ie);
+                }
+            }
+        }
         int n = 0;
-        for (SessionSnapshotPersistence.LoadedSession ls : sessionPersistence.loadAll()) {
+        for (SessionSnapshotPersistence.LoadedSession ls : loaded) {
             String id = ls.session().getSessionId();
             if (sessions.containsKey(id)) {
                 continue;
             }
             sessions.put(id, ls.session());
             messages.put(id, new ArrayList<>(ls.messages()));
-            eventStore.put(id, new ArrayList<>());
-            sinks.put(id, Sinks.many().multicast().directBestEffort());
+            // eventStore/sink 不再预建：publishEvent/stream 会按需重建，闲置会话也无需常驻这两块状态
             n++;
         }
-        if (n > 0) {
-            log.info("restored {} conversation session(s) from persistence store", n);
-        }
+        log.info("restored {} conversation session(s) from persistence store", n);
     }
 
     private void persistSnapshot(String sessionId) {
@@ -120,6 +141,47 @@ public class SessionService {
         sessionPersistence.save(s, list != null ? list : List.of());
     }
 
+    /** 流式状态闲置多久后回收（事件重放窗口、SSE sink、幂等键）。会话与消息本体保留，历史记录不受影响。 */
+    private static final Duration STREAMING_STATE_IDLE_TTL = Duration.ofHours(2);
+
+    /**
+     * 每 10 分钟回收不活跃会话的流式状态，防止 eventStore/sinks 随运行时间无限增长（OOM 根源之一）。
+     * 会话被重新激活时 publishEvent/stream 会按需重建 sink 与 eventStore。
+     */
+    @Scheduled(fixedDelay = 600_000, initialDelay = 600_000)
+    void evictIdleStreamingState() {
+        Instant cutoff = Instant.now().minus(STREAMING_STATE_IDLE_TTL);
+        int cleaned = 0;
+        for (ConversationSession s : sessions.values()) {
+            Instant lastActivity = s.getLastActivityAt();
+            if (lastActivity == null || !lastActivity.isBefore(cutoff)) {
+                continue;
+            }
+            String id = s.getSessionId();
+            boolean hadState = false;
+            List<StreamEvent> store = eventStore.remove(id);
+            if (store != null && !store.isEmpty()) {
+                hadState = true;
+            }
+            Sinks.Many<StreamEvent> sink = sinks.remove(id);
+            if (sink != null) {
+                sink.tryEmitComplete();
+                hadState = true;
+            }
+            String prefix = id + ":";
+            if (idempotencyStore.keySet().removeIf(k -> k.startsWith(prefix))) {
+                hadState = true;
+            }
+            if (hadState) {
+                cleaned++;
+            }
+        }
+        if (cleaned > 0) {
+            log.info("evicted streaming state of {} idle session(s); maps: sessions={} eventStore={} sinks={} idempotency={}",
+                    cleaned, sessions.size(), eventStore.size(), sinks.size(), idempotencyStore.size());
+        }
+    }
+
     public ConversationSession createSession(String ownerUserId, SessionMode mode, String question) {
         String sessionId = "sess_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         Instant now = Instant.now();
@@ -128,7 +190,7 @@ public class SessionService {
         sessions.put(sessionId, session);
         messages.put(sessionId, new ArrayList<>());
         eventStore.put(sessionId, new ArrayList<>());
-        sinks.put(sessionId, Sinks.many().multicast().directBestEffort());
+        sinks.put(sessionId, newEventSink());
 
         String q = question == null ? "" : question;
         if (sessionTitleFromLlm) {
@@ -376,13 +438,27 @@ public class SessionService {
                     publishEvent(sessionId, turnId, chunk.eventType(), jsonPayloadForChunkContent(chunk.content()));
                 })
                 .doOnComplete(() -> {
-                    String finalReply = agentReply.get().toString().trim();
-                    if (!finalReply.isEmpty()) {
-                        appendMessage(session, MessageRole.AGENT, finalReply, turnId, activeSpeakerId.get());
+                    // 写库失败也不能丢 turn_done，否则前端会一直等到超时（表现为"页面无反应"）
+                    try {
+                        String finalReply = agentReply.get().toString().trim();
+                        if (!finalReply.isEmpty()) {
+                            appendMessage(session, MessageRole.AGENT, finalReply, turnId, activeSpeakerId.get());
+                        }
+                    } catch (Exception e) {
+                        log.error("append agent reply failed sessionId={} turnId={}", sessionId, turnId, e);
                     }
                     publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + "}");
                 })
-                .subscribe();
+                .doOnError(e -> {
+                    log.error("agent pipeline failed sessionId={} turnId={}", sessionId, turnId, e);
+                    publishEvent(sessionId, turnId, "agent_error",
+                            jsonPayloadForChunkContent("本轮处理失败：" + safeErrorBrief(e) + "，请重试。"));
+                    publishEvent(sessionId, turnId, "turn_done", "{\"turnId\":" + turnId + ",\"error\":true}");
+                })
+                .subscribe(
+                        chunk -> { },
+                        e -> { /* 错误已在 doOnError 处理；这里吞掉避免 onErrorDropped 噪音 */ }
+                );
         return Optional.of(userMessage.messageId());
     }
 
@@ -414,14 +490,23 @@ public class SessionService {
             effectiveLastEventId = null;
         }
         final Long cursor = effectiveLastEventId;
-        List<StreamEvent> replay = eventStore.getOrDefault(sessionId, List.of()).stream()
-                .filter(e -> cursor == null || e.seq() > cursor)
-                .toList();
+        List<StreamEvent> store = eventStore.computeIfAbsent(sessionId, k -> new ArrayList<>());
+        List<StreamEvent> replay;
+        synchronized (store) {
+            replay = store.stream()
+                    .filter(e -> cursor == null || e.seq() > cursor)
+                    .toList();
+        }
+        // 水位线：replay 已覆盖的最大 seq。live 流只放行水位线之后的事件，
+        // 防止 onBackpressureBuffer 缓冲的旧事件与 replay 重复送达（重复会导致前端内容翻倍）。
+        long watermark = replay.isEmpty()
+                ? (cursor != null ? cursor : 0L)
+                : replay.get(replay.size() - 1).seq();
         Flux<ServerSentEvent<String>> replayFlux = Flux.fromIterable(replay).map(this::toSse);
-        Sinks.Many<StreamEvent> sink = sinks.get(sessionId);
-        Flux<ServerSentEvent<String>> liveFlux = sink == null
-                ? Flux.empty()
-                : sink.asFlux().map(this::toSse);
+        Sinks.Many<StreamEvent> sink = sinks.computeIfAbsent(sessionId, k -> newEventSink());
+        Flux<ServerSentEvent<String>> liveFlux = sink.asFlux()
+                .filter(e -> e.seq() > watermark)
+                .map(this::toSse);
         Flux<ServerSentEvent<String>> heartbeat = Flux.interval(Duration.ofSeconds(20))
                 .map(i -> ServerSentEvent.<String>builder()
                         .event("heartbeat")
@@ -445,6 +530,16 @@ public class SessionService {
         return message;
     }
 
+    /** 单会话 SSE 事件缓冲上限：避免弱网订阅者拖垮内存；上限内的慢消费不丢事件（替代 directBestEffort 的静默丢弃） */
+    private static final int SINK_BUFFER_SIZE = 2048;
+    /** 单会话 eventStore 上限：超过后裁掉最老的事件（Last-Event-ID 早于裁剪点的客户端会少量丢重放，可接受） */
+    private static final int EVENT_STORE_MAX_PER_SESSION = 2000;
+
+    private static Sinks.Many<StreamEvent> newEventSink() {
+        // autoCancel=false：订阅者全部断开后 Sink 仍可用，支持断线重连
+        return Sinks.many().multicast().onBackpressureBuffer(SINK_BUFFER_SIZE, false);
+    }
+
     private void publishEvent(String sessionId, long turnId, String eventType, String payload) {
         StreamEvent event = new StreamEvent(
                 "evt_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
@@ -455,11 +550,26 @@ public class SessionService {
                 payload,
                 Instant.now()
         );
-        eventStore.computeIfAbsent(sessionId, k -> new ArrayList<>()).add(event);
-        Sinks.Many<StreamEvent> sink = sinks.get(sessionId);
-        if (sink != null) {
-            sink.tryEmitNext(event);
+        List<StreamEvent> store = eventStore.computeIfAbsent(sessionId, k -> new ArrayList<>());
+        synchronized (store) {
+            store.add(event);
+            if (store.size() > EVENT_STORE_MAX_PER_SESSION) {
+                store.subList(0, store.size() - EVENT_STORE_MAX_PER_SESSION).clear();
+            }
         }
+        // 老会话的 sink 可能已被清理：重新激活时自动重建，保证事件仍可送达
+        Sinks.Many<StreamEvent> sink = sinks.computeIfAbsent(sessionId, k -> newEventSink());
+        Sinks.EmitResult result = sink.tryEmitNext(event);
+        if (result.isFailure()) {
+            log.warn("sse emit failed sessionId={} type={} seq={} result={}", sessionId, eventType, event.seq(), result);
+        }
+    }
+
+    /** 截取异常信息前 120 字符给前端展示，避免泄露堆栈/内部 URL */
+    private static String safeErrorBrief(Throwable e) {
+        String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        msg = msg.replaceAll("https?://\\S+", "[url]");
+        return msg.length() > 120 ? msg.substring(0, 120) + "…" : msg;
     }
 
     private ServerSentEvent<String> toSse(StreamEvent event) {

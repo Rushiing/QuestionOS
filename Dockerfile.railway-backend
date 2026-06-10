@@ -16,4 +16,5 @@ COPY --from=builder /app/target/*.jar /app/app.jar
 EXPOSE 8080
 # 使用 PostgreSQL 持久化会话；本地无库时请 unset 或改为 local
 ENV SPRING_PROFILES_ACTIVE=postgres
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# 显式限定堆上限：不设上限时 JVM 按容器内存比例自行抢占且不归还，内存水位不可控
+ENTRYPOINT ["java", "-Xms256m", "-Xmx1024m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200", "-jar", "/app/app.jar"]

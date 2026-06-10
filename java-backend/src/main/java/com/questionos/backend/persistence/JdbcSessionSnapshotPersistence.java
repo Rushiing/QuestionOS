@@ -110,28 +110,45 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
         }
     }
 
+    /**
+     * 启动恢复全量会话。
+     * 错误处理分两层：单行数据解析失败只跳过该行（坏数据不连坐全库）；
+     * 连接级/查询级异常向上抛，由调用方（SessionService 启动重试）决定重试或快速失败——
+     * 绝不能吞掉异常返回空列表，那会让服务带着"失忆"假装健康。
+     */
     @Override
     public List<LoadedSession> loadAll() {
-        List<LoadedSession> out = new ArrayList<>();
-        try {
-            Map<String, List<ConversationMessage>> bySession = new LinkedHashMap<>();
-            RowCallbackHandler collectMessages = rs -> {
+        Map<String, List<ConversationMessage>> bySession = new LinkedHashMap<>();
+        int[] skipped = {0};
+        RowCallbackHandler collectMessages = rs -> {
+            try {
                 ConversationMessage m = mapMessage(rs);
                 bySession.computeIfAbsent(m.sessionId(), k -> new ArrayList<>()).add(m);
-            };
-            jdbc.query(
-                    "SELECT * FROM qos_conversation_message ORDER BY session_id, created_at ASC, message_id ASC",
-                    collectMessages);
-
-            List<ConversationSession> sessionRows = jdbc.query(
-                    "SELECT * FROM qos_conversation_session ORDER BY created_at ASC",
-                    (rs, rowNum) -> mapSessionRow(rs, bySession.getOrDefault(rs.getString("session_id"), List.of()).size()));
-
-            for (ConversationSession s : sessionRows) {
-                out.add(new LoadedSession(s, bySession.getOrDefault(s.getSessionId(), List.of())));
+            } catch (SQLException | RuntimeException rowErr) {
+                skipped[0]++;
+                log.warn("skip unreadable message row: {}", rowErr.toString());
             }
-        } catch (Exception e) {
-            log.warn("failed to load sessions from postgres", e);
+        };
+        jdbc.query(
+                "SELECT * FROM qos_conversation_message ORDER BY session_id, created_at ASC, message_id ASC",
+                collectMessages);
+
+        List<ConversationSession> sessionRows = new ArrayList<>();
+        jdbc.query("SELECT * FROM qos_conversation_session ORDER BY created_at ASC", rs -> {
+            try {
+                sessionRows.add(mapSessionRow(rs, bySession.getOrDefault(rs.getString("session_id"), List.of()).size()));
+            } catch (SQLException | RuntimeException rowErr) {
+                skipped[0]++;
+                log.warn("skip unreadable session row: {}", rowErr.toString());
+            }
+        });
+
+        List<LoadedSession> out = new ArrayList<>();
+        for (ConversationSession s : sessionRows) {
+            out.add(new LoadedSession(s, bySession.getOrDefault(s.getSessionId(), List.of())));
+        }
+        if (skipped[0] > 0) {
+            log.warn("loadAll skipped {} unreadable row(s); loaded {} session(s)", skipped[0], out.size());
         }
         return out;
     }
