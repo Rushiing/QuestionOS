@@ -18,16 +18,19 @@ export interface StreamSseOptions {
 
 const DEFAULT_SSE_CONNECT_TIMEOUT_MS = 270_000; // 270s = 后端 240s LLM timeout + 30s 缓冲
 /**
- * 空闲看门狗：后端每 20s 发一次 heartbeat，正常连接不可能 45s 毫无字节。
- * 超过即判定为 TCP 半开（边缘代理静默断链，服务端仍向死管道写入、浏览器侧 read() 永久挂起，
- * 2026-06-11 生产卡死的根因），主动断开并带 Last-Event-ID 重连，由后端 replay 补发漏掉的事件。
+ * 业务事件看门狗（正确性以 replay 拉取为准，实时推送只当加速器）：
+ * 生产观察（2026-06-11）：Railway 边缘上"已建立连接的实时推送"会间歇性失效，
+ * 且心跳可能照常流动——所以心跳不能作为链路健康的依据，只有业务事件才算数。
+ * 本流是"每轮一开"的短生命周期流，轮次进行中事件间隔通常只有几秒；
+ * 12s 没有任何业务事件就主动断开、带 Last-Event-ID 重连，由后端 eventStore replay 补齐。
+ * 误触发的代价只是一次多余请求（replay 幂等 + 水位线去重），零数据损失。
  */
-const SSE_IDLE_TIMEOUT_MS = 30_000;
-const SSE_MAX_RECONNECTS = 3;
+const SSE_BUSINESS_IDLE_MS = 12_000;
+const SSE_MAX_RECONNECTS = 10;
 
 class SseIdleTimeoutError extends Error {
   constructor() {
-    super(`SSE 空闲超时（${Math.round(SSE_IDLE_TIMEOUT_MS / 1000)}s 未收到任何数据，含心跳）`);
+    super(`SSE 业务事件空闲超时（${Math.round(SSE_BUSINESS_IDLE_MS / 1000)}s 无业务事件，主动重连拉取）`);
     this.name = 'SseIdleTimeoutError';
   }
 }
@@ -77,12 +80,19 @@ export const streamSse = async (options: StreamSseOptions): Promise<void> => {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // 业务空闲基准：连接建立视作起点；之后只有真实业务事件（非心跳）才会刷新
+    let lastBusinessAt = Date.now();
 
-    // 空闲看门狗：每次 read 与定时器赛跑；任何字节（含心跳）都会重置
+    // 看门狗：每次 read 与「距离业务空闲截止的剩余时间」赛跑。
+    // 心跳字节会让 read 返回（循环继续），但不刷新 lastBusinessAt——心跳不能证明推送层健康。
     const readWithIdleGuard = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+      const remaining = SSE_BUSINESS_IDLE_MS - (Date.now() - lastBusinessAt);
+      if (remaining <= 0) {
+        throw new SseIdleTimeoutError();
+      }
       let idleTimer: ReturnType<typeof setTimeout> | undefined;
       const idle = new Promise<never>((_, reject) => {
-        idleTimer = setTimeout(() => reject(new SseIdleTimeoutError()), SSE_IDLE_TIMEOUT_MS);
+        idleTimer = setTimeout(() => reject(new SseIdleTimeoutError()), remaining);
       });
       try {
         return await Promise.race([reader.read(), idle]);
@@ -128,7 +138,8 @@ export const streamSse = async (options: StreamSseOptions): Promise<void> => {
               cursor = Math.max(cursor, seq);
             }
           }
-          // 收到真实业务事件说明链路健康，重置重连预算（长会话多次抖动也能撑过去）
+          // 收到真实业务事件：刷新业务空闲基准 + 重置重连预算（长会话多次抖动也能撑过去）
+          lastBusinessAt = Date.now();
           reconnects = 0;
           options.onDebug?.(`[sse] event ${eventType} #${eventId || '-'}`);
           const stop = options.onEvent({ eventType, eventId, dataRaw });

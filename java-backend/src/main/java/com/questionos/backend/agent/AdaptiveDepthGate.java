@@ -98,11 +98,12 @@ public class AdaptiveDepthGate {
         }
 
         String payload = sb.toString();
+        // max_tokens 600：中文评估 JSON 实测 300+ tokens，180 会被 finish_reason=length 截断导致解析失败、永远回退 LOW
         return invokeService.invokeDefaultLlmCompact(
                 CONSENSUS_ASSESSMENT_SYSTEM,
                 payload,
                 "adaptive:consensus-assess",
-                180,
+                600,
                 20
         )
                 .timeout(Duration.ofSeconds(30))
