@@ -179,7 +179,7 @@ public class AgentOrchestrator {
             return """
                     ## 本轮审议阶段：综合裁决（首席整合官）
 
-                    先用各半句点明前文中最尖锐的「正题 / 反题」张力，再按既定 Markdown 输出；博弈复盘三条须能看出与该张力对应。
+                    先从下文「前序观点速览」中挑出**张力最大的一对主张**，用各半句点明这组「正题 / 反题」（点名出处），再按既定 Markdown 输出；博弈复盘三条须能看出与该张力对应。
                     """;
         }
         int lap = sandboxRoundIndex / cycleLen;
@@ -195,7 +195,8 @@ public class AgentOrchestrator {
         return """
                 ## 本轮审议阶段：交叉审查（辩证）
 
-                - 至少点名一位前序参与者（用其在界面上的**展示名/外聘 Agent 名**），针对其**一条**具体论断表明赞成或反对及理由。
+                - 从下文「前序观点速览」表中**选定至少一位**参与者（用其展示名点名），针对其**一条具体论断**表明赞成或反对，并给出你的理由或反例。
+                - 选靶标准：选与你角色立场**张力最大**的那条主张，而不是最容易附和的。
                 - 用 1 句话给出合题取向：在什么前提下双方可部分同时成立。
                 - 为完成论证，总字数允许在约 220 字内，仍以可验证的追问或行动收口。
                 """;
@@ -291,19 +292,86 @@ public class AgentOrchestrator {
         };
     }
 
+    /** 单条前序发言注入上下文的长度上限：防止多轮沙盘 prompt 无限膨胀 */
+    private static final int PRIOR_AGENT_MESSAGE_MAX_CHARS = 1500;
+
+    private static boolean isDeliberationAgentMessage(ConversationMessage m) {
+        return m.role() == MessageRole.AGENT
+                && m.content() != null && !m.content().isBlank()
+                && !"sandbox-route".equals(m.agentSpeakerId())
+                && !"sandbox-classify".equals(m.agentSpeakerId());
+    }
+
     private String formatPriorAgents(List<ConversationMessage> prior, SandboxDeliberationScene scene) {
         StringBuilder sb = new StringBuilder();
         for (ConversationMessage m : prior) {
-            if (m.role() != MessageRole.AGENT || m.content() == null || m.content().isBlank()) {
-                continue;
-            }
-            if ("sandbox-route".equals(m.agentSpeakerId()) || "sandbox-classify".equals(m.agentSpeakerId())) {
+            if (!isDeliberationAgentMessage(m)) {
                 continue;
             }
             String label = displayNameForSpeakerId(m.agentSpeakerId(), scene);
-            sb.append("【").append(label).append("】：").append(m.content().trim()).append("\n\n");
+            String content = m.content().trim();
+            if (content.length() > PRIOR_AGENT_MESSAGE_MAX_CHARS) {
+                content = content.substring(0, PRIOR_AGENT_MESSAGE_MAX_CHARS) + "\n…（该发言过长已截断，核心主张见上方速览表）";
+            }
+            sb.append("【").append(label).append("】：").append(content).append("\n\n");
         }
         return sb.toString().trim();
+    }
+
+    /**
+     * 提取一条发言的「一句话核心主张」：跳过 Markdown 标题/表格/引用行，取首个实质段落的首句。
+     * 首轮发言已被要求以一句话总结开头，因此确定性提取即可，不需要额外 LLM 调用。
+     */
+    private static String extractCoreClaim(String content) {
+        if (content == null) {
+            return "";
+        }
+        for (String rawLine : content.split("\n")) {
+            String line = rawLine.trim();
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith("---")
+                    || line.startsWith("|") || line.startsWith(">")) {
+                continue;
+            }
+            String cleaned = line.replaceAll("[*_`]", "")
+                    .replaceFirst("^[-•]\\s*", "")
+                    .replaceFirst("^\\d+[.、)]\\s*", "")
+                    .trim();
+            if (cleaned.isEmpty()) {
+                continue;
+            }
+            int end = -1;
+            for (int i = 0; i < cleaned.length(); i++) {
+                char c = cleaned.charAt(i);
+                if (c == '。' || c == '！' || c == '？'
+                        || ((c == '.' || c == '!' || c == '?') && i >= 12)) {
+                    end = i + 1;
+                    break;
+                }
+            }
+            String sentence = end > 0 ? cleaned.substring(0, end) : cleaned;
+            return sentence.length() > 90 ? sentence.substring(0, 90) + "…" : sentence;
+        }
+        return "";
+    }
+
+    /** 前序观点速览表：交叉审查轮从中选定交锋对象与具体论断，避免面对全文文字墙时泛泛回应 */
+    private String formatPriorClaimsTable(List<ConversationMessage> prior, SandboxDeliberationScene scene) {
+        StringBuilder rows = new StringBuilder();
+        for (ConversationMessage m : prior) {
+            if (!isDeliberationAgentMessage(m)) {
+                continue;
+            }
+            String claim = extractCoreClaim(m.content());
+            if (claim.isEmpty()) {
+                continue;
+            }
+            rows.append("| ").append(displayNameForSpeakerId(m.agentSpeakerId(), scene))
+                    .append(" | ").append(claim.replace("|", "／")).append(" |\n");
+        }
+        if (rows.isEmpty()) {
+            return "";
+        }
+        return "| 发言人 | 一句话核心主张 |\n|---|---|\n" + rows;
     }
 
     /** 会话中第一条用户消息 = 沙盘要钉死的「核心议题」（后续轮次仍带回，避免攻击飘成套话） */
@@ -344,6 +412,7 @@ public class AgentOrchestrator {
         String phase = phaseBlock == null ? "" : phaseBlock.trim();
         String core = truncateCoreTopic(firstUserIssue(prior, latestUser));
         String latest = latestUser == null ? "" : latestUser.trim();
+        String claimsTable = formatPriorClaimsTable(prior, scene);
         String agents = formatPriorAgents(prior, scene);
         StringBuilder sb = new StringBuilder();
         sb.append(routing).append("\n\n");
@@ -353,8 +422,12 @@ public class AgentOrchestrator {
         sb.append("## 用户核心议题（整场沙盘须围绕此议题，禁止空泛套话）\n\n")
                 .append(core.isEmpty() ? "（用户尚未说明具体议题）" : core)
                 .append("\n\n## 本轮用户最新发言\n\n")
-                .append(latest.isEmpty() ? "（无）" : latest)
-                .append("\n\n## 前面其他参与者的观点\n\n")
+                .append(latest.isEmpty() ? "（无）" : latest);
+        if (!claimsTable.isEmpty()) {
+            sb.append("\n\n## 前序观点速览（交叉审查时从此表选定交锋对象与具体论断）\n\n")
+                    .append(claimsTable);
+        }
+        sb.append("\n\n## 前面其他参与者的完整发言\n\n")
                 .append(agents.isEmpty() ? "（暂无）" : agents)
                 .append("\n");
         return sb.toString();
