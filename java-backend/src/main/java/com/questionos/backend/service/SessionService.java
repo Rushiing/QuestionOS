@@ -503,6 +503,8 @@ public class SessionService {
         long watermark = replay.isEmpty()
                 ? (cursor != null ? cursor : 0L)
                 : replay.get(replay.size() - 1).seq();
+        log.info("sse stream open sessionId={} cursor={} replaySize={} watermark={} currentSeq={}",
+                sessionId, cursor, replay.size(), watermark, currentSeq);
         Flux<ServerSentEvent<String>> replayFlux = Flux.fromIterable(replay).map(this::toSse);
         Sinks.Many<StreamEvent> sink = sinks.computeIfAbsent(sessionId, k -> newEventSink());
         Flux<ServerSentEvent<String>> liveFlux = sink.asFlux()
@@ -563,6 +565,9 @@ public class SessionService {
         Sinks.EmitResult result = sink.tryEmitNext(event);
         if (result.isFailure()) {
             log.warn("sse emit failed sessionId={} type={} seq={} result={}", sessionId, eventType, event.seq(), result);
+        } else if ("agent_chunk".equals(eventType) || "turn_done".equals(eventType) || "agent_error".equals(eventType)) {
+            // 排障锚点：证明该事件确实已发布并成功写入 live sink（缺这条 = 管线没走到发布）
+            log.info("sse publish ok sessionId={} type={} seq={}", sessionId, eventType, event.seq());
         }
     }
 
