@@ -96,6 +96,11 @@ public class SessionService {
     @PostConstruct
     void hydrateSessionsFromPersistence() {
         if (!sessionPersistence.isEnabled()) {
+            // 生产环境绝不应走到这里：persistence 关闭意味着会话只存内存、重启即丢。
+            // 2026-06 曾因 Railway Root Directory 误配导致 profile 回退 local、持久化静默失效，故必须吼出来。
+            log.warn("session persistence is DISABLED ({}) — sessions are IN-MEMORY ONLY and will be lost on restart; "
+                            + "if this is production, check SPRING_PROFILES_ACTIVE=postgres and Railway dockerfile config",
+                    sessionPersistence.getClass().getSimpleName());
             return;
         }
         // Railway 冷启动时 Java 与 Postgres 并行拉起，瞬时连不上是常态：必须重试。
