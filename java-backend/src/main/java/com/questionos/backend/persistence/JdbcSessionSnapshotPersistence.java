@@ -158,9 +158,9 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
         String owner = rs.getString("owner_user_id");
         SessionMode mode = SessionMode.valueOf(rs.getString("mode"));
         SessionStatus status = SessionStatus.valueOf(rs.getString("status"));
-        Instant created = rs.getObject("created_at", Instant.class);
-        Instant last = rs.getObject("last_activity_at", Instant.class);
-        Instant exp = rs.getObject("expires_at", Instant.class);
+        Instant created = instantOf(rs, "created_at");
+        Instant last = instantOf(rs, "last_activity_at");
+        Instant exp = instantOf(rs, "expires_at");
         String title = rs.getString("display_title");
         long turnSeq = rs.getLong("turn_seq");
         int sandbox = rs.getInt("sandbox_speaker_round");
@@ -180,9 +180,15 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                 deliberationScene);
     }
 
+    /** pgjdbc 不支持 getObject(col, Instant.class) 读 timestamptz（生产 hydration 自 4 月起逐行失败的根因）；必须经 Timestamp 转换 */
+    private static Instant instantOf(ResultSet rs, String column) throws SQLException {
+        Timestamp ts = rs.getTimestamp(column);
+        return ts == null ? null : ts.toInstant();
+    }
+
     private static ConversationMessage mapMessage(ResultSet rs) throws SQLException {
         MessageRole role = MessageRole.valueOf(rs.getString("role"));
-        Instant created = rs.getObject("created_at", Instant.class);
+        Instant created = instantOf(rs, "created_at");
         return new ConversationMessage(
                 rs.getString("message_id"),
                 rs.getString("session_id"),
