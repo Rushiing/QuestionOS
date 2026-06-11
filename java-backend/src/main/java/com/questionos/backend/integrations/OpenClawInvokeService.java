@@ -312,13 +312,8 @@ public class OpenClawInvokeService {
                 }
             }
         }
-        boolean dashExtra = body.containsKey("extra_body");
-        String extraThinkingLog = "n/a";
-        Object ebObj = body.get("extra_body");
-        if (ebObj instanceof Map<?, ?> em) {
-            Object et = em.get("enable_thinking");
-            extraThinkingLog = et == null ? "null" : String.valueOf(et);
-        }
+        boolean dashExtra = body.containsKey("enable_thinking");
+        String extraThinkingLog = dashExtra ? String.valueOf(body.get("enable_thinking")) : "n/a";
         log.info(
                 "LLM request start stage={} model={} timeoutSec={} systemChars={} userChars={} dashScopeExtraBody={} extraEnableThinking={} url={}",
                 stage,
@@ -415,13 +410,8 @@ public class OpenClawInvokeService {
         int accChars = 0;
         String jsonBody = objectMapper.writeValueAsString(body);
 
-        boolean dashExtra = body.containsKey("extra_body");
-        String extraThinkingLog = "n/a";
-        Object ebObj = body.get("extra_body");
-        if (ebObj instanceof Map<?, ?> em) {
-            Object et = em.get("enable_thinking");
-            extraThinkingLog = et == null ? "null" : String.valueOf(et);
-        }
+        boolean dashExtra = body.containsKey("enable_thinking");
+        String extraThinkingLog = dashExtra ? String.valueOf(body.get("enable_thinking")) : "n/a";
         log.info(
                 "LLM stream request start stage={} model={} timeoutSec={} dashScopeExtraBody={} extraEnableThinking={} stream=true url={}",
                 stage,
@@ -548,14 +538,15 @@ public class OpenClawInvokeService {
             body.put("max_tokens", mt);
         }
         if (shouldAttachDashscopeStyleExtras(endpointHint)) {
-            Map<String, Object> extra = new HashMap<>();
-            extra.put("enable_thinking", extraBodyEnableThinking);
-            body.put("extra_body", extra);
+            // 必须放顶层：extra_body 是 OpenAI Python SDK 的客户端约定（SDK 会合并到顶层），
+            // 裸 HTTP 直发 extra_body 字段会被 DashScope 静默忽略——
+            // 2026-06-11 deepseek-v4-flash 默认思考模式开启后，该问题表现为沙盘发言长时间"卡住"。
+            body.put("enable_thinking", extraBodyEnableThinking);
         }
         return body;
     }
 
-    /** 与 Python OpenAI SDK 的 extra_body 对齐；仅对百炼/DashScope 域名附加，避免向纯 OpenAI 发送未知字段 */
+    /** 仅对百炼/DashScope 域名附加 enable_thinking，避免向纯 OpenAI 发送未知字段（OpenAI 会 400 拒绝未知参数） */
     private static boolean shouldAttachDashscopeStyleExtras(String endpoint) {
         if (endpoint == null || endpoint.isBlank()) {
             return false;
