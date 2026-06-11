@@ -22,7 +22,7 @@ const DEFAULT_SSE_CONNECT_TIMEOUT_MS = 270_000; // 270s = 后端 240s LLM timeou
  * 超过即判定为 TCP 半开（边缘代理静默断链，服务端仍向死管道写入、浏览器侧 read() 永久挂起，
  * 2026-06-11 生产卡死的根因），主动断开并带 Last-Event-ID 重连，由后端 replay 补发漏掉的事件。
  */
-const SSE_IDLE_TIMEOUT_MS = 45_000;
+const SSE_IDLE_TIMEOUT_MS = 30_000;
 const SSE_MAX_RECONNECTS = 3;
 
 class SseIdleTimeoutError extends Error {
