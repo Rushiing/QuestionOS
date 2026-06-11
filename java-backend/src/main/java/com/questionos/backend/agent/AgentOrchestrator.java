@@ -26,15 +26,18 @@ public class AgentOrchestrator {
     private final MainCalibrateAgent mainAgent;
     private final AgentRegistryService registryService;
     private final OpenClawInvokeService invokeService;
+    private final AdaptiveDepthGate adaptiveDepthGate;
 
     public AgentOrchestrator(
             MainCalibrateAgent mainAgent,
             AgentRegistryService registryService,
-            OpenClawInvokeService invokeService
+            OpenClawInvokeService invokeService,
+            AdaptiveDepthGate adaptiveDepthGate
     ) {
         this.mainAgent = mainAgent;
         this.registryService = registryService;
         this.invokeService = invokeService;
+        this.adaptiveDepthGate = adaptiveDepthGate;
     }
 
     public Flux<AgentReplyChunk> runPipeline(
@@ -104,23 +107,24 @@ public class AgentOrchestrator {
         String sys = augmentBuiltinSystemPrompt(b);
         String done = b.displayName() + " 发言结束。";
         if (b.slot() == SandboxSlot.INTEGRATOR) {
-            if (hasThirdPartyAgents) {
-                return oneSpeakerWithAgent(
-                        speakerId,
-                        b.displayName(),
-                        sys,
-                        buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
-                        reg.get(),
-                        done
-                );
+            // 收口前先评估本圈各角色共识度（AdaptiveDepthGate）：
+            // 共识高 → 指示整合官直接给结论；分歧大 → 指示列出分歧并引导用户进入下一轮交叉审查
+            List<String> lapAnalyses = lapAnalysesForGate(prior);
+            boolean withThirdParty = hasThirdPartyAgents;
+            AgentRegistryService.RegisteredAgent thirdParty = withThirdParty ? reg.get() : null;
+            if (lapAnalyses.isEmpty()) {
+                String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, null);
+                return withThirdParty
+                        ? oneSpeakerWithAgent(speakerId, b.displayName(), sys, userMsg, thirdParty, done)
+                        : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
             }
-            return oneSpeakerWithDefaultLlm(
-                    speakerId,
-                    b.displayName(),
-                    sys,
-                    buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock),
-                    done
-            );
+            return adaptiveDepthGate.assessAsync(lapAnalyses)
+                    .flatMapMany(assessment -> {
+                        String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, assessment);
+                        return withThirdParty
+                                ? oneSpeakerWithAgent(speakerId, b.displayName(), sys, userMsg, thirdParty, done)
+                                : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
+                    });
         }
         if (hasThirdPartyAgents) {
             return oneSpeakerWithAgent(
@@ -450,13 +454,59 @@ public class AgentOrchestrator {
         return msg + "\n";
     }
 
+    /** 取自上一次整合官收口之后的全部审议发言（即本圈待综合的各角色分析），供共识评估 */
+    private static List<String> lapAnalysesForGate(List<ConversationMessage> prior) {
+        List<String> out = new ArrayList<>();
+        for (int i = prior.size() - 1; i >= 0; i--) {
+            ConversationMessage m = prior.get(i);
+            if ("integrator".equals(m.agentSpeakerId())) {
+                break;
+            }
+            if (isDeliberationAgentMessage(m)) {
+                out.add(m.content().trim());
+            }
+        }
+        java.util.Collections.reverse(out);
+        return out;
+    }
+
+    /** 把共识评估转成整合官的收口策略指令 */
+    private static String consensusBlock(AdaptiveDepthGate.ConsensusAssessment a) {
+        if (a == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("\n## 共识评估（收口策略依据；不要在报告中原样照抄本节字段）\n\n");
+        sb.append("- 共识级别：").append(a.consensusLevel).append("\n");
+        if (a.majorityView != null && !a.majorityView.isBlank()) {
+            sb.append("- 多数方向：").append(a.majorityView).append("\n");
+        }
+        if (a.minorityView != null && !a.minorityView.isBlank()) {
+            sb.append("- 少数观点：").append(a.minorityView);
+            if (a.minorityStrength != null && !a.minorityStrength.isBlank()) {
+                sb.append("（强度：").append(a.minorityStrength).append("）");
+            }
+            sb.append("\n");
+        }
+        sb.append("\n收口要求：\n");
+        if (a.isHighConsensus()) {
+            sb.append("- 各角色方向高度一致：报告**第一句**明确告知用户共识所在，直接给出结论与行动清单；")
+                    .append("不要为了表面平衡人为制造分歧。\n");
+        } else {
+            sb.append("- 存在实质分歧：报告末尾必须加「## 主要分歧与下一步」小节，点名列出最关键的 1~2 处分歧，")
+                    .append("并明确建议用户**补充哪类具体信息**后继续对话，进入下一轮交叉审查把分歧打透。\n");
+        }
+        return sb.toString();
+    }
+
     private String buildIntegratorUserMessage(
             List<ConversationMessage> prior,
             String latestUser,
             SandboxDeliberationScene scene,
-            String phaseBlock
+            String phaseBlock,
+            AdaptiveDepthGate.ConsensusAssessment assessment
     ) {
         return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
+                + consensusBlock(assessment)
                 + "\n---\n作为本轮综合执笔人，请收束这场博弈：博弈复盘与决策沙盘表格中的「关键问题」必须**显式回扣上述用户核心议题**，"
                 + "输出你的决策沙盘报告。\n";
     }

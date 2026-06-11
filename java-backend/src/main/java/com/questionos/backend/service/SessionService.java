@@ -2,7 +2,6 @@ package com.questionos.backend.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.questionos.backend.agent.AdaptiveDepthGate;
 import com.questionos.backend.agent.AgentOrchestrator;
 import com.questionos.backend.agent.AgentReplyChunk;
 import com.questionos.backend.agent.ProblemDissolutionChecker;
@@ -56,7 +55,6 @@ public class SessionService {
     private final MainCalibrateAgent mainCalibrateAgent;
     private final AgentRegistryService agentRegistryService;
     private final ProblemDissolutionChecker dissolutionChecker;
-    private final AdaptiveDepthGate adaptiveDepthGate;
 
     @Value("${questionos.session.titleFromLlm:false}")
     private boolean sessionTitleFromLlm;
@@ -76,8 +74,7 @@ public class SessionService {
             SandboxSceneClassifier sandboxSceneClassifier,
             MainCalibrateAgent mainCalibrateAgent,
             AgentRegistryService agentRegistryService,
-            ProblemDissolutionChecker dissolutionChecker,
-            AdaptiveDepthGate adaptiveDepthGate
+            ProblemDissolutionChecker dissolutionChecker
     ) {
         this.orchestrator = orchestrator;
         this.sessionTitleService = sessionTitleService;
@@ -87,7 +84,6 @@ public class SessionService {
         this.mainCalibrateAgent = mainCalibrateAgent;
         this.agentRegistryService = agentRegistryService;
         this.dissolutionChecker = dissolutionChecker;
-        this.adaptiveDepthGate = adaptiveDepthGate;
     }
 
     private static final int HYDRATION_MAX_ATTEMPTS = 10;
