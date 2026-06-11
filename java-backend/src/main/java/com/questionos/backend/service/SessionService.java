@@ -533,14 +533,16 @@ public class SessionService {
         return message;
     }
 
-    /** 单会话 SSE 事件缓冲上限：避免弱网订阅者拖垮内存；上限内的慢消费不丢事件（替代 directBestEffort 的静默丢弃） */
-    private static final int SINK_BUFFER_SIZE = 2048;
     /** 单会话 eventStore 上限：超过后裁掉最老的事件（Last-Event-ID 早于裁剪点的客户端会少量丢重放，可接受） */
     private static final int EVENT_STORE_MAX_PER_SESSION = 2000;
 
     private static Sinks.Many<StreamEvent> newEventSink() {
-        // autoCancel=false：订阅者全部断开后 Sink 仍可用，支持断线重连
-        return Sinks.many().multicast().onBackpressureBuffer(SINK_BUFFER_SIZE, false);
+        // 必须用 directBestEffort（按订阅者独立投递），绝不能换成 onBackpressureBuffer：
+        // 后者是锁步广播，投递速度由最慢订阅者决定。前端每轮 reader.cancel() 经边缘代理
+        // 不一定及时传回后端，残留的"僵尸订阅"会让整个 Sink 停摆——新订阅者拿不到任何
+        // 业务事件而心跳（独立通道）照常流动，表现为间歇性整轮卡死（2026-06-11 生产实锤）。
+        // 慢订阅者的丢事件由三层防御兜底：eventStore 重放 + stream() 水位线 + 客户端空闲看门狗重连。
+        return Sinks.many().multicast().directBestEffort();
     }
 
     private void publishEvent(String sessionId, long turnId, String eventType, String payload) {
