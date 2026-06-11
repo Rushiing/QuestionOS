@@ -1,5 +1,5 @@
 import { apiPath } from './runtime-config';
-import { buildSandboxHeaders } from './http';
+import { buildSandboxHeaders, handleUnauthorized } from './http';
 
 export interface SseEvent {
   eventType: string;
@@ -50,6 +50,10 @@ export const streamSse = async (options: StreamSseOptions): Promise<void> => {
     clearTimeout(timer);
   }
   options.onDebug?.(`[sse] status ${response.status}`);
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error('登录已过期，请重新登录');
+  }
   if (!response.ok || !response.body) {
     options.onDebug?.('[sse] response invalid, abort');
     throw new Error(`stream failed: ${response.status}`);

@@ -720,11 +720,37 @@ export default function ConsultPage() {
       if (timedOut) return;
     } catch (error) {
       console.error('runTurn failed:', error);
-      setMessages(prev => [...prev, {
-        id: `${Date.now()}-err`,
-        role: 'system',
-        content: '抱歉，本轮推演失败，请重试。',
-      }]);
+      // SSE 中途断开时后端往往已生成完回复：先拉最新消息兜底恢复，真失败才报错（与 chat 页一致）
+      let recovered = false;
+      try {
+        const msgList = await sandboxClient.listMessages(sid);
+        const latestAgent = [...(msgList || [])]
+          .reverse()
+          .find(m => String(m.role || '').toUpperCase() === 'AGENT' && m.content?.trim());
+        if (latestAgent) {
+          recovered = true;
+          setMessages(prev => {
+            if (prev.some(p => p.role === 'agent' && p.content === latestAgent.content)) {
+              return prev; // 该回复已在界面上，无需重复恢复
+            }
+            return [...prev, {
+              id: `${Date.now()}-recovered`,
+              role: 'agent' as const,
+              agent_id: latestAgent.agentSpeakerId ?? undefined,
+              content: latestAgent.content,
+            }];
+          });
+        }
+      } catch (recoverErr) {
+        console.warn('recover latest agent message failed:', recoverErr);
+      }
+      if (!recovered) {
+        setMessages(prev => [...prev, {
+          id: `${Date.now()}-err`,
+          role: 'system',
+          content: '网络连接中断，本轮推演可能未完成；请重试，或刷新页面查看已生成的内容。',
+        }]);
+      }
     } finally {
       clearTimeout(timeout);
       if (!timedOut) {

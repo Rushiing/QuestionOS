@@ -1,4 +1,4 @@
-import { apiPath, API_VERSION, SANDBOX_FALLBACK_TOKEN } from './runtime-config';
+import { apiPath, API_VERSION } from './runtime-config';
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
@@ -46,25 +46,48 @@ export type FetchJsonInit = RequestInit & {
   retryDelayMs?: number;
 };
 
+/**
+ * 仅返回真实登录 token；未登录返回空串。
+ * 不再静默回退共享的 sandbox token——那会让未登录用户的会话挂到共享身份名下，
+ * 且 token 内联在前端 bundle 里等于公开（2026-04 排查历史归属时确认的隐患）。
+ */
 export const getBearerToken = (): string => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('token');
     if (token) return token;
   }
-  return SANDBOX_FALLBACK_TOKEN;
+  return '';
+};
+
+const authHeader = (): Record<string, string> => {
+  const token = getBearerToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
 export const buildHeaders = (extra?: Record<string, string>): Record<string, string> => ({
-  Authorization: `Bearer ${getBearerToken()}`,
+  ...authHeader(),
   'X-API-Version': API_VERSION,
   ...extra,
 });
 
 export const buildSandboxHeaders = (extra?: Record<string, string>): Record<string, string> => ({
-  Authorization: `Bearer ${getBearerToken()}`,
+  ...authHeader(),
   'X-API-Version': API_VERSION,
   ...extra,
 });
+
+/** 401 统一处理：清除失效 token 并跳转登录页（仅浏览器端；已在登录页则不重复跳转） */
+export const handleUnauthorized = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem('token');
+  } catch {
+    // ignore storage errors
+  }
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+};
 
 export const fetchJson = async <T = any>(path: string, init?: FetchJsonInit): Promise<T> => {
   const {
@@ -103,6 +126,10 @@ export const fetchJson = async <T = any>(path: string, init?: FetchJsonInit): Pr
       clearTimeout(timer);
       if (userSignal) userSignal.removeEventListener('abort', onUserAbort);
       const data = await response.json().catch(() => null);
+      if (response.status === 401) {
+        handleUnauthorized();
+        throw new Error('登录已过期，请重新登录');
+      }
       if (!response.ok) {
         if (allowRetry && attempt < attempts && isRetryableHttpStatus(response.status)) {
           await sleep(retryDelayMs * 2 ** attempt);

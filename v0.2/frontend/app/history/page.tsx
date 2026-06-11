@@ -23,6 +23,7 @@ export default function HistoryPage() {
   const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,6 +36,8 @@ export default function HistoryPage() {
   }, [authLoading, user]);
 
   const fetchSessions = async () => {
+    setLoading(true);
+    setLoadError(false);
     try {
       const sessions = await sandboxClient.listSessions();
       const sorted = sessions.map((s: SandboxSessionSummary) => ({
@@ -50,6 +53,7 @@ export default function HistoryPage() {
       setSessions(sorted);
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -70,41 +74,34 @@ export default function HistoryPage() {
     return date.toLocaleDateString('zh-CN');
   };
 
-  const groupSessionsByDate = (sessions: Session[]) => {
-    const groups: { [key: string]: Session[] } = {};
+  const groupSessionsByDate = (sessions: Session[]): Array<[string, Session[]]> => {
+    // 用本地日期 yyyy-mm-dd 作为分组与排序的 key——中文标签（"2026年4月9日"）丢给 new Date()
+    // 解析结果是 NaN，排序是未定义行为，跨天历史会乱序
+    const toDayKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const todayKey = toDayKey(today);
+    const yesterdayKey = toDayKey(yesterday);
 
+    const groups: { [key: string]: { label: string; items: Session[] } } = {};
     sessions.forEach(session => {
       const date = new Date(session.created_at);
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      let groupKey = '';
-      if (date.toDateString() === today.toDateString()) {
-        groupKey = '今天';
-      } else if (date.toDateString() === yesterday.toDateString()) {
-        groupKey = '昨天';
-      } else {
-        groupKey = date.toLocaleDateString('zh-CN', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        });
+      const key = toDayKey(date);
+      if (!groups[key]) {
+        const label =
+          key === todayKey ? '今天'
+            : key === yesterdayKey ? '昨天'
+              : date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+        groups[key] = { label, items: [] };
       }
-
-      if (!groups[groupKey]) {
-        groups[groupKey] = [];
-      }
-      groups[groupKey].push(session);
+      groups[key].items.push(session);
     });
 
-    return Object.entries(groups).sort(([keyA], [keyB]) => {
-      if (keyA === '今天') return -1;
-      if (keyB === '今天') return 1;
-      if (keyA === '昨天') return -1;
-      if (keyB === '昨天') return 1;
-      return new Date(keyB).getTime() - new Date(keyA).getTime();
-    });
+    return Object.entries(groups)
+      .sort(([a], [b]) => (a > b ? -1 : a < b ? 1 : 0))
+      .map(([, g]) => [g.label, g.items]);
   };
 
   const handleContinue = (sessionId: string) => {
@@ -171,6 +168,16 @@ export default function HistoryPage() {
         {authLoading || loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-12">
+            <p className="text-slate-600 mb-4">历史记录加载失败，可能是网络问题</p>
+            <button
+              onClick={fetchSessions}
+              className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              重试
+            </button>
           </div>
         ) : sessions.length === 0 ? (
           <div className="text-center py-12">
