@@ -398,10 +398,23 @@ public class AgentOrchestrator {
      * 没有这份清单时，发言人只能看见用户的第一句和最后一句——中间对追问的回答全部不可见，
      * 输出必然退化为与用户处境无关的通用分析（2026-06-12 用户实测体感的根因）。
      */
-    private static String formatUserFacts(List<ConversationMessage> prior) {
+    private String formatUserFacts(List<ConversationMessage> prior, SandboxDeliberationScene scene) {
+        // 问答配对：每条用户回答标注它回应的是谁的哪条追问。没有配对时，
+        // 「我会选择私下调整」这类回答脱离其假设性前提就成了歧义句，
+        // 后续发言人会把"对假设情境的选择"误读成"改变当下行动"（2026-06-12 实测）。
         List<String> facts = new ArrayList<>();
         boolean skippedFirst = false;
+        String pendingAsker = null;
+        String pendingQuestion = null;
         for (ConversationMessage m : prior) {
+            if (isDeliberationAgentMessage(m)) {
+                String q = extractQuestionLine(m.content());
+                if (q != null) {
+                    pendingAsker = displayNameForSpeakerId(m.agentSpeakerId(), scene);
+                    pendingQuestion = q;
+                }
+                continue;
+            }
             if (m.role() != MessageRole.USER || m.content() == null || m.content().isBlank()) {
                 continue;
             }
@@ -413,7 +426,13 @@ public class AgentOrchestrator {
             if (t.length() > USER_FACTS_ITEM_MAX_CHARS) {
                 t = t.substring(0, USER_FACTS_ITEM_MAX_CHARS) + "…";
             }
-            facts.add(t);
+            if (pendingQuestion != null) {
+                facts.add("（回应 " + pendingAsker + " 的追问「" + pendingQuestion + "」）" + t);
+            } else {
+                facts.add(t);
+            }
+            pendingAsker = null;
+            pendingQuestion = null;
         }
         if (facts.isEmpty()) {
             return "";
@@ -426,6 +445,44 @@ public class AgentOrchestrator {
             sb.append(i + 1).append(". ").append(facts.get(i)).append("\n");
         }
         return sb.toString().trim();
+    }
+
+    /** 取一条发言中以 ❓ 开头的追问行（截断到 80 字），没有则返回 null */
+    private static String extractQuestionLine(String content) {
+        if (content == null) {
+            return null;
+        }
+        for (String rawLine : content.split("\n")) {
+            String line = rawLine.trim();
+            if (line.startsWith("❓")) {
+                String q = line.substring(1).trim().replaceAll("[*_`]", "");
+                if (q.isEmpty()) {
+                    continue;
+                }
+                return q.length() > 80 ? q.substring(0, 80) + "…" : q;
+            }
+        }
+        return null;
+    }
+
+    /** 最新发言的问答绑定：用户最新一句通常是在回答上一位发言人的追问，把那条追问找出来 */
+    private String latestAnswerBinding(List<ConversationMessage> prior, SandboxDeliberationScene scene) {
+        for (int i = prior.size() - 1; i >= 0; i--) {
+            ConversationMessage m = prior.get(i);
+            if (m.role() == MessageRole.USER) {
+                return null; // 最近一条已是用户消息（不应发生），不做绑定
+            }
+            if (isDeliberationAgentMessage(m)) {
+                String q = extractQuestionLine(m.content());
+                if (q == null) {
+                    return null;
+                }
+                return "> 注意：这句话是在回答 " + displayNameForSpeakerId(m.agentSpeakerId(), scene)
+                        + " 的追问「" + q + "」——解读时必须带上该追问的完整语境（尤其是其中的假设前提）；"
+                        + "用户对**假设情境**的选择不等于改变其已确认的当下行动。";
+            }
+        }
+        return null;
     }
 
     /**
@@ -510,7 +567,7 @@ public class AgentOrchestrator {
         if (!phase.isEmpty()) {
             sb.append(phase).append("\n\n");
         }
-        String userFacts = formatUserFacts(prior);
+        String userFacts = formatUserFacts(prior, scene);
         sb.append("## 用户核心议题（整场沙盘须围绕此议题，禁止空泛套话）\n\n")
                 .append(core.isEmpty() ? "（用户尚未说明具体议题）" : core);
         if (!userFacts.isEmpty()) {
@@ -519,6 +576,12 @@ public class AgentOrchestrator {
         }
         sb.append("\n\n## 本轮用户最新发言\n\n")
                 .append(latest.isEmpty() ? "（无）" : latest);
+        if (!latest.isEmpty()) {
+            String binding = latestAnswerBinding(prior, scene);
+            if (binding != null) {
+                sb.append("\n\n").append(binding);
+            }
+        }
         if (!claimsTable.isEmpty()) {
             sb.append("\n\n## 前序观点速览（交叉审查时从此表选定交锋对象与具体论断）\n\n")
                     .append(claimsTable);
