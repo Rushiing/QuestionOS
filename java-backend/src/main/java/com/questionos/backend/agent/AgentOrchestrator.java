@@ -378,6 +378,45 @@ public class AgentOrchestrator {
         return "| 发言人 | 一句话核心主张 |\n|---|---|\n" + rows;
     }
 
+    /** 进入事实清单的用户补充上限：条数与单条长度（防 prompt 膨胀，保留最近的回答） */
+    private static final int USER_FACTS_MAX_ITEMS = 12;
+    private static final int USER_FACTS_ITEM_MAX_CHARS = 200;
+
+    /**
+     * 用户在审议过程中的全部补充回答（首条=核心议题、末条=最新发言，两者单列，此处取中间部分）。
+     * 没有这份清单时，发言人只能看见用户的第一句和最后一句——中间对追问的回答全部不可见，
+     * 输出必然退化为与用户处境无关的通用分析（2026-06-12 用户实测体感的根因）。
+     */
+    private static String formatUserFacts(List<ConversationMessage> prior) {
+        List<String> facts = new ArrayList<>();
+        boolean skippedFirst = false;
+        for (ConversationMessage m : prior) {
+            if (m.role() != MessageRole.USER || m.content() == null || m.content().isBlank()) {
+                continue;
+            }
+            if (!skippedFirst) {
+                skippedFirst = true; // 首条已作为「核心议题」单列
+                continue;
+            }
+            String t = m.content().trim();
+            if (t.length() > USER_FACTS_ITEM_MAX_CHARS) {
+                t = t.substring(0, USER_FACTS_ITEM_MAX_CHARS) + "…";
+            }
+            facts.add(t);
+        }
+        if (facts.isEmpty()) {
+            return "";
+        }
+        if (facts.size() > USER_FACTS_MAX_ITEMS) {
+            facts = facts.subList(facts.size() - USER_FACTS_MAX_ITEMS, facts.size());
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < facts.size(); i++) {
+            sb.append(i + 1).append(". ").append(facts.get(i)).append("\n");
+        }
+        return sb.toString().trim();
+    }
+
     /** 会话中第一条用户消息 = 沙盘要钉死的「核心议题」（后续轮次仍带回，避免攻击飘成套话） */
     private static String firstUserIssue(List<ConversationMessage> prior, String latestUser) {
         for (ConversationMessage m : prior) {
@@ -423,9 +462,14 @@ public class AgentOrchestrator {
         if (!phase.isEmpty()) {
             sb.append(phase).append("\n\n");
         }
+        String userFacts = formatUserFacts(prior);
         sb.append("## 用户核心议题（整场沙盘须围绕此议题，禁止空泛套话）\n\n")
-                .append(core.isEmpty() ? "（用户尚未说明具体议题）" : core)
-                .append("\n\n## 本轮用户最新发言\n\n")
+                .append(core.isEmpty() ? "（用户尚未说明具体议题）" : core);
+        if (!userFacts.isEmpty()) {
+            sb.append("\n\n## 用户在审议中已补充的事实（按时间序，这些是用户的真实处境，分析与追问必须建立在其上）\n\n")
+                    .append(userFacts);
+        }
+        sb.append("\n\n## 本轮用户最新发言\n\n")
                 .append(latest.isEmpty() ? "（无）" : latest);
         if (!claimsTable.isEmpty()) {
             sb.append("\n\n## 前序观点速览（交叉审查时从此表选定交锋对象与具体论断）\n\n")
@@ -447,7 +491,11 @@ public class AgentOrchestrator {
         String msg = formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
                 + "\n---\n\n现在轮到你了。从**你的角色立场**出发，**直指上文「用户核心议题」中的具体目标、约束、利益相关方、时间或内在矛盾**发起挑战或追问；"
                 + "须遵守上文「本轮审议阶段」：独立分析轮匿名化引用；交叉审查轮必须点名交锋并尝试合题。"
-                + "禁止只输出与用户议题无关的通用管理话术。";
+                + "禁止只输出与用户议题无关的通用管理话术。"
+                + "\n\n接地要求（违反任何一条即视为失败发言）：\n"
+                + "1. 你的分析必须**显式使用**「用户在审议中已补充的事实」（如有）——引用用户原话关键词，把它们当作已确认的真实处境，而不是从零空谈；\n"
+                + "2. **禁止重复询问**用户已经回答过的问题（已回答内容见上方事实清单）；新的追问必须比上一轮更深一层，建立在已有回答之上；\n"
+                + "3. 若用户最新发言是对某位发言人追问的回答，你必须先一句话点明「这个回答改变了什么判断」，再展开你的分析。";
         if ("是".equals(isIndependentAnalysis)) {
             msg += "\n\n**首先**用一句话总结你的核心观点/建议方向（便于读者快速抓住重点），然后按你的指定输出格式完整展开分析。";
         }
@@ -508,7 +556,8 @@ public class AgentOrchestrator {
         return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
                 + consensusBlock(assessment)
                 + "\n---\n作为本轮综合执笔人，请收束这场博弈：博弈复盘与决策沙盘表格中的「关键问题」必须**显式回扣上述用户核心议题**，"
-                + "输出你的决策沙盘报告。\n";
+                + "结论与行动建议必须**逐条对应「用户在审议中已补充的事实」**（如有）——用户给过的数字、约束、表态都要用上，"
+                + "不允许给出对任何人都成立的通用建议。输出你的决策沙盘报告。\n";
     }
 
     private String buildThirdPartyUserMessage(
