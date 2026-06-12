@@ -428,6 +428,43 @@ public class AgentOrchestrator {
         return sb.toString().trim();
     }
 
+    /**
+     * 全场已提出过的追问（各发言以 ❓ 开头的行）。确定性提取后注入上下文并明令禁止重复——
+     * 仅靠"不要重复提问"的软指令不够：2026-06-12 实测中场小结原样复述了上一位发言人刚问过、
+     * 用户甚至已经回答了的问题。
+     */
+    private static String formatAskedQuestions(List<ConversationMessage> prior) {
+        List<String> questions = new ArrayList<>();
+        for (ConversationMessage m : prior) {
+            if (!isDeliberationAgentMessage(m)) {
+                continue;
+            }
+            for (String rawLine : m.content().split("\n")) {
+                String line = rawLine.trim();
+                if (line.startsWith("❓")) {
+                    String q = line.substring(1).trim().replaceAll("[*_`]", "");
+                    if (q.length() > 120) {
+                        q = q.substring(0, 120) + "…";
+                    }
+                    if (!q.isEmpty() && !questions.contains(q)) {
+                        questions.add(q);
+                    }
+                }
+            }
+        }
+        if (questions.isEmpty()) {
+            return "";
+        }
+        if (questions.size() > 15) {
+            questions = questions.subList(questions.size() - 15, questions.size());
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < questions.size(); i++) {
+            sb.append(i + 1).append(". ").append(questions.get(i)).append("\n");
+        }
+        return sb.toString().trim();
+    }
+
     /** 会话中第一条用户消息 = 沙盘要钉死的「核心议题」（后续轮次仍带回，避免攻击飘成套话） */
     private static String firstUserIssue(List<ConversationMessage> prior, String latestUser) {
         for (ConversationMessage m : prior) {
@@ -485,6 +522,11 @@ public class AgentOrchestrator {
         if (!claimsTable.isEmpty()) {
             sb.append("\n\n## 前序观点速览（交叉审查时从此表选定交锋对象与具体论断）\n\n")
                     .append(claimsTable);
+        }
+        String askedQuestions = formatAskedQuestions(prior);
+        if (!askedQuestions.isEmpty()) {
+            sb.append("\n\n## 已提出过的追问（你的新问题不得与其中任何一条重复或近似；用户对它们的回答见上方事实清单）\n\n")
+                    .append(askedQuestions);
         }
         sb.append("\n\n## 前面其他参与者的完整发言\n\n")
                 .append(agents.isEmpty() ? "（暂无）" : agents)
@@ -592,7 +634,9 @@ public class AgentOrchestrator {
         }
         return formatSandboxContextBlock(prior, latestUser, scene, phase)
                 + facts
-                + "\n---\n请基于上述共识评估完成中场小结：当前共识、最大分歧（点名出处）、当前最值得用户回答的一个新问题。\n";
+                + "\n---\n请基于上述共识评估完成中场小结：当前共识、最大分歧（点名出处）、当前最值得用户回答的一个新问题。\n"
+                + "注意：用户最新发言若已回答了某位发言人的追问，必须把该回答吸收进共识/分歧的表述；"
+                + "你的 ❓ 严禁与「已提出过的追问」清单中任何一条重复或近似——若分歧已被用户的回答化解，就指出审议该往哪个新方向去。\n";
     }
 
     private String buildIntegratorUserMessage(

@@ -530,6 +530,8 @@ export default function ConsultPage() {
       activeAgentMsgId = null;
     };
     const appendDebugLog = (line: string) => {
+      // 同步落 Console（debug 级别，需在 DevTools 打开 Verbose 才显示）：空气泡类问题的现场取证通道
+      console.debug('[qos-sse]', line);
       setDebugLogs((prev) => {
         const next = [...prev, line];
         return next.length > 80 ? next.slice(next.length - 80) : next;
@@ -612,9 +614,26 @@ export default function ConsultPage() {
             ensureAgentMessage('main-calibrate');
           }
           renderedChunkChars += String(content).length;
-          setMessages(prev => prev.map(m =>
-            m.id === activeAgentMsgId ? { ...m, content: (m.content ?? '') + content } : m
-          ));
+          const targetId = activeAgentMsgId;
+          setMessages(prev => {
+            if (targetId && !prev.some(m => m.id === targetId)) {
+              // 渲染自愈：气泡丢失（flushSync 失败等）时就地重建，并留下现场证据
+              console.warn('[consult] agent_chunk arrived but bubble missing; recreating', targetId);
+              const base = agentMeta('main-calibrate');
+              return [...prev, {
+                id: targetId,
+                role: 'agent' as const,
+                agent_id: 'main-calibrate',
+                agent_name: base.name,
+                agent_avatar: base.avatar,
+                content: String(content),
+                is_streaming: true,
+              }];
+            }
+            return prev.map(m =>
+              m.id === targetId ? { ...m, content: (m.content ?? '') + content } : m
+            );
+          });
         } else if (eventType === 'agent_error') {
           hasStreamActivityRef.current = true;
           if (!activeAgentMsgId) {
@@ -655,6 +674,7 @@ export default function ConsultPage() {
     }, (line) => appendDebugLog(`[${new Date().toLocaleTimeString('zh-CN')}] ${line}`));
 
     clearActiveStreaming();
+    console.debug('[qos-sse] turn stream ended', { isDone, renderedChunkChars, lastBubbleId });
     // 渲染保险：turn_done 已收到但本轮没有任何正文渲染成功（解析/渲染层意外）。
     // 后端此刻必已落库，拉最新回复回填空气泡——chat 页同款保险，杜绝"空白发言"（2026-06-12 沙盘实测）。
     if (isDone && renderedChunkChars === 0) {
