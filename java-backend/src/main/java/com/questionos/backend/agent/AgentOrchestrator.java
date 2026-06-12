@@ -107,11 +107,14 @@ public class AgentOrchestrator {
         String sys = augmentBuiltinSystemPrompt(b);
         String done = b.displayName() + " 发言结束。";
         if (b.slot() == SandboxSlot.INTEGRATOR) {
-            // 收口前先评估本圈各角色共识度（AdaptiveDepthGate）：
-            // 共识高 → 指示整合官直接给结论；分歧大 → 指示列出分歧并引导用户进入下一轮交叉审查
+            // 整合官位双模式：终局报告 vs 中场小结。
+            // 收束时机三选一满足即终局：共识门 HIGH / 已进入第二圈（lap>=1）/ 用户明确要求收束；
+            // 否则只出中场小结，把审议引向第二圈交叉审查（修复"第一圈刚完就甩终局报告"的仓促感）。
             List<String> lapAnalyses = lapAnalysesForGate(prior);
             boolean withThirdParty = hasThirdPartyAgents;
             AgentRegistryService.RegisteredAgent thirdParty = withThirdParty ? reg.get() : null;
+            int lap = sandboxRoundIndex >= 0 && cycleLen > 0 ? sandboxRoundIndex / cycleLen : 0;
+            boolean userWantsClose = userRequestedCloseout(latestUser);
             if (lapAnalyses.isEmpty()) {
                 String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, null);
                 return withThirdParty
@@ -120,10 +123,18 @@ public class AgentOrchestrator {
             }
             return adaptiveDepthGate.assessAsync(lapAnalyses)
                     .flatMapMany(assessment -> {
-                        String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, assessment);
+                        boolean closeOut = userWantsClose || lap >= 1 || assessment.isHighConsensus();
+                        if (closeOut) {
+                            String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, assessment);
+                            return withThirdParty
+                                    ? oneSpeakerWithAgent(speakerId, b.displayName(), sys, userMsg, thirdParty, done)
+                                    : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
+                        }
+                        String interimSys = b.personaPrefix().trim() + "\n\n" + SandboxBuiltInPrompts.INTERIM_SYNTHESIS;
+                        String interimMsg = buildInterimUserMessage(prior, latestUser, scene, assessment);
                         return withThirdParty
-                                ? oneSpeakerWithAgent(speakerId, b.displayName(), sys, userMsg, thirdParty, done)
-                                : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
+                                ? oneSpeakerWithAgent(speakerId, b.displayName(), interimSys, interimMsg, thirdParty, done)
+                                : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), interimSys, interimMsg, done);
                     });
         }
         if (hasThirdPartyAgents) {
@@ -544,6 +555,44 @@ public class AgentOrchestrator {
                     .append("并明确建议用户**补充哪类具体信息**后继续对话，进入下一轮交叉审查把分歧打透。\n");
         }
         return sb.toString();
+    }
+
+    /** 用户是否明确要求提前收束出报告（中场小结里会提示这个口令） */
+    private static boolean userRequestedCloseout(String latestUser) {
+        if (latestUser == null || latestUser.isBlank()) {
+            return false;
+        }
+        String t = latestUser.trim();
+        return t.contains("给出结论") || t.contains("出结论") || t.contains("出报告")
+                || t.contains("最终报告") || t.contains("收束") || t.contains("直接总结")
+                || t.contains("给我建议") || t.contains("最终建议");
+    }
+
+    /** 中场小结的 user 消息：完整上下文 + 共识评估，但任务是小结与引导，不是终局报告 */
+    private String buildInterimUserMessage(
+            List<ConversationMessage> prior,
+            String latestUser,
+            SandboxDeliberationScene scene,
+            AdaptiveDepthGate.ConsensusAssessment assessment
+    ) {
+        String phase = """
+                ## 本轮审议阶段：中场小结（第一圈结束，共识未达成）
+
+                不要输出终局报告；按你的角色指令做紧凑小结，并把审议引向第二圈交叉审查。
+                """;
+        StringBuilder facts = new StringBuilder("\n## 共识评估（小结依据，不要原样照抄字段）\n\n");
+        if (assessment != null) {
+            facts.append("- 共识级别：").append(assessment.consensusLevel).append("\n");
+            if (assessment.majorityView != null && !assessment.majorityView.isBlank()) {
+                facts.append("- 多数方向：").append(assessment.majorityView).append("\n");
+            }
+            if (assessment.minorityView != null && !assessment.minorityView.isBlank()) {
+                facts.append("- 少数观点：").append(assessment.minorityView).append("\n");
+            }
+        }
+        return formatSandboxContextBlock(prior, latestUser, scene, phase)
+                + facts
+                + "\n---\n请基于上述共识评估完成中场小结：当前共识、最大分歧（点名出处）、当前最值得用户回答的一个新问题。\n";
     }
 
     private String buildIntegratorUserMessage(

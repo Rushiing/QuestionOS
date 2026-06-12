@@ -23,7 +23,8 @@
       "Bash(mkdir -p src/routes src/models src/services)",
       "Bash(npm create *)",
       "Bash(timeout 5 npm start)",
-      "Bash(python3 compare_models.py)"
+      "Bash(python3 compare_models.py)",
+      "Bash(git clone *)"
     ]
   }
 }
