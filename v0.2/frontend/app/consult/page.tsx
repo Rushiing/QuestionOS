@@ -518,6 +518,9 @@ export default function ConsultPage() {
   const streamTurnEvents = async (sid: string) => {
     let isDone = false;
     let activeAgentMsgId: string | null = null;
+    // 本轮渲染审计：turn_done 到了但正文一个字都没渲染上，说明解析/渲染层出了意外，需要回填保险
+    let renderedChunkChars = 0;
+    let lastBubbleId: string | null = null;
     const clearActiveStreaming = () => {
       if (!activeAgentMsgId) return;
       const targetId = activeAgentMsgId;
@@ -537,6 +540,7 @@ export default function ConsultPage() {
       const name = sseDisplayName?.trim() ? sseDisplayName.trim() : base.name;
       const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       activeAgentMsgId = newId;
+      lastBubbleId = newId;
       // agent_chunk 会在同一轮事件循环里紧跟 agent_start；若此处仅异步 setState，下一条 map 的 prev 可能还没有这条气泡，导致正文永远写不进去、一直停在「输出中」。
       flushSync(() => {
         setMessages((prev) => [
@@ -607,6 +611,7 @@ export default function ConsultPage() {
           if (!activeAgentMsgId) {
             ensureAgentMessage('main-calibrate');
           }
+          renderedChunkChars += String(content).length;
           setMessages(prev => prev.map(m =>
             m.id === activeAgentMsgId ? { ...m, content: (m.content ?? '') + content } : m
           ));
@@ -643,12 +648,51 @@ export default function ConsultPage() {
           return true;
         }
       } catch (e) {
-        console.error('Parse SSE event failed:', e);
+        // 带上事件类型与原文片段：空气泡排障的关键证据
+        console.error('Parse SSE event failed:', eventType, dataRaw.slice(0, 200), e);
       }
       return false;
     }, (line) => appendDebugLog(`[${new Date().toLocaleTimeString('zh-CN')}] ${line}`));
 
     clearActiveStreaming();
+    // 渲染保险：turn_done 已收到但本轮没有任何正文渲染成功（解析/渲染层意外）。
+    // 后端此刻必已落库，拉最新回复回填空气泡——chat 页同款保险，杜绝"空白发言"（2026-06-12 沙盘实测）。
+    if (isDone && renderedChunkChars === 0) {
+      console.warn('[consult] turn completed but no content rendered; self-healing from listMessages');
+      try {
+        const msgList = await sandboxClient.listMessages(sid);
+        const latestAgent = [...(msgList || [])].reverse().find(
+          (m) =>
+            String(m.role || '').toUpperCase() === 'AGENT' &&
+            m.content?.trim() &&
+            m.agentSpeakerId !== 'sandbox-route' &&
+            m.agentSpeakerId !== 'sandbox-classify',
+        );
+        if (latestAgent) {
+          const fillId = lastBubbleId;
+          if (fillId) {
+            setMessages(prev => prev.map(m =>
+              m.id === fillId && !(m.content ?? '').trim()
+                ? { ...m, content: latestAgent.content, is_streaming: false }
+                : m
+            ));
+          } else {
+            const aid = (latestAgent.agentSpeakerId || 'auditor').trim() || 'auditor';
+            const { name, avatar } = agentMeta(aid);
+            setMessages(prev => [...prev, {
+              id: `${Date.now()}-selfheal`,
+              role: 'agent',
+              agent_id: aid,
+              agent_name: name,
+              agent_avatar: avatar,
+              content: latestAgent.content,
+            }]);
+          }
+        }
+      } catch (e) {
+        console.warn('[consult] self-heal fetch failed:', e);
+      }
+    }
     if (!isDone) {
       return;
     }
