@@ -22,9 +22,9 @@ export const metadata: Metadata = {
   description: '将模糊的问题转化为清晰可执行的指令',
 }
 
-/** 浏览器 API 基址：优先运行时变量（Railway 上 INTERNAL_API_URL 常在运行时才有，未必参与 client bundle 构建） */
+/** 浏览器 API 基址：只暴露浏览器可访问的地址；INTERNAL_API_URL 保留给 Next 服务端代理使用。 */
 function browserApiBaseScript(): string {
-  const raw = (process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || '').trim()
+  const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim()
   const base = raw.replace(/\/$/, '')
   return `window.__QOS_API_BASE__=${JSON.stringify(base)};`
 }
