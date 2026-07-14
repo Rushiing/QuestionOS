@@ -16,6 +16,7 @@ import java.util.Optional;
 @Repository
 @Profile("postgres")
 public class UserAccountJdbcRepository {
+    public record PasswordAccount(AuthDtos.AuthUser user, String passwordHash) {}
     private final JdbcTemplate jdbc;
 
     public UserAccountJdbcRepository(DataSource dataSource) {
@@ -46,6 +47,32 @@ public class UserAccountJdbcRepository {
                 user.email() != null ? user.email() : "",
                 user.name() != null ? user.name() : "",
                 avatar);
+    }
+
+    public void createPasswordUser(AuthDtos.AuthUser user, String passwordHash) {
+        jdbc.update(
+                """
+                        INSERT INTO qos_user_account (
+                          user_id, email, display_name, avatar_url, provider, password_hash, created_at, last_login_at
+                        ) VALUES (?,?,?,?, 'password', ?, now(), now())
+                        """,
+                user.id(), user.email(), user.name(), "", passwordHash);
+    }
+
+    public Optional<PasswordAccount> findPasswordAccountByEmail(String email) {
+        var list = jdbc.query(
+                """
+                        SELECT user_id, email, display_name, avatar_url, password_hash
+                        FROM qos_user_account
+                        WHERE provider = 'password' AND lower(email) = lower(?)
+                        """,
+                (rs, rowNum) -> new PasswordAccount(
+                        new AuthDtos.AuthUser(
+                                rs.getString("user_id"), rs.getString("email"), rs.getString("display_name"),
+                                rs.getString("avatar_url") != null ? rs.getString("avatar_url") : ""),
+                        rs.getString("password_hash")),
+                email);
+        return list.stream().findFirst();
     }
 
     public Optional<AuthDtos.AuthUser> findByUserId(String userId) {

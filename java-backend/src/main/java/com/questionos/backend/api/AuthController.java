@@ -4,10 +4,12 @@ import com.questionos.backend.api.dto.AuthDtos;
 import com.questionos.backend.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Validated
 @RestController
@@ -23,6 +25,24 @@ public class AuthController {
     public Mono<ResponseEntity<AuthDtos.AuthSuccessResponse>> google(@Valid @RequestBody AuthDtos.GoogleAuthRequest request) {
         return authService.loginWithGoogle(request.id_token())
                 .map(ResponseEntity::ok);
+    }
+
+    @PostMapping("/register")
+    public Mono<ResponseEntity<Object>> register(@Valid @RequestBody AuthDtos.PasswordRegisterRequest request) {
+        return Mono.fromCallable(() -> ResponseEntity.ok((Object) authService.registerWithPassword(
+                        request.email(), request.password(), request.name())))
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(IllegalArgumentException.class, e -> Mono.just(
+                        ResponseEntity.status(HttpStatus.CONFLICT).body((Object) java.util.Map.of("detail", e.getMessage()))));
+    }
+
+    @PostMapping("/login")
+    public Mono<ResponseEntity<Object>> login(@Valid @RequestBody AuthDtos.PasswordLoginRequest request) {
+        return Mono.fromCallable(() -> ResponseEntity.ok((Object)
+                        authService.loginWithPassword(request.email(), request.password())))
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(IllegalArgumentException.class, e -> Mono.just(
+                        ResponseEntity.status(HttpStatus.UNAUTHORIZED).body((Object) java.util.Map.of("detail", e.getMessage()))));
     }
 
     @GetMapping("/me")

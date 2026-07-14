@@ -9,6 +9,7 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -21,6 +22,7 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -35,6 +37,7 @@ public class AuthService {
     private final Map<String, AuthDtos.AuthUser> sessionStore = new ConcurrentHashMap<>();
     private final ObjectProvider<UserAccountJdbcRepository> userAccountRepository;
     private final String jwtSecretRaw;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private static final AuthDtos.AuthUser SANDBOX_USER = new AuthDtos.AuthUser(
             "sandbox_local",
@@ -86,6 +89,39 @@ public class AuthService {
                     String accessToken = issueAccessToken(user);
                     return new AuthDtos.AuthSuccessResponse(accessToken, user);
                 });
+    }
+
+    public AuthDtos.AuthSuccessResponse registerWithPassword(String email, String password, String name) {
+        UserAccountJdbcRepository repo = requiredUserRepository();
+        String normalizedEmail = email.trim().toLowerCase(java.util.Locale.ROOT);
+        if (repo.findPasswordAccountByEmail(normalizedEmail).isPresent()) {
+            throw new IllegalArgumentException("该邮箱已注册");
+        }
+        String displayName = name == null || name.isBlank()
+                ? normalizedEmail.substring(0, normalizedEmail.indexOf('@'))
+                : name.trim();
+        AuthDtos.AuthUser user = new AuthDtos.AuthUser(
+                "password_" + UUID.randomUUID(), normalizedEmail, displayName, "");
+        repo.createPasswordUser(user, passwordEncoder.encode(password));
+        return new AuthDtos.AuthSuccessResponse(issueAccessToken(user), user);
+    }
+
+    public AuthDtos.AuthSuccessResponse loginWithPassword(String email, String password) {
+        UserAccountJdbcRepository.PasswordAccount account = requiredUserRepository()
+                .findPasswordAccountByEmail(email.trim().toLowerCase(java.util.Locale.ROOT))
+                .orElseThrow(() -> new IllegalArgumentException("邮箱或密码错误"));
+        if (!passwordEncoder.matches(password, account.passwordHash())) {
+            throw new IllegalArgumentException("邮箱或密码错误");
+        }
+        return new AuthDtos.AuthSuccessResponse(issueAccessToken(account.user()), account.user());
+    }
+
+    private UserAccountJdbcRepository requiredUserRepository() {
+        UserAccountJdbcRepository repo = userAccountRepository.getIfAvailable();
+        if (repo == null) {
+            throw new IllegalStateException("账号密码登录需要 PostgreSQL 配置");
+        }
+        return repo;
     }
 
     private SecretKey jwtSigningKey() {

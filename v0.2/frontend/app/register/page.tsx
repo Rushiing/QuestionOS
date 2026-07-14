@@ -44,11 +44,7 @@ export default function RegisterPage() {
         throw new Error(data.detail || '注册失败');
       }
 
-      // 检查是否需要验证邮箱
-      if (data.status === 'verification_sent') {
-        setEmailSent(true);
-      } else if (data.access_token) {
-        // 兼容旧逻辑（直接登录）
+      if (data.access_token) {
         localStorage.setItem('token', data.access_token);
         localStorage.setItem('user', JSON.stringify(data.user));
         router.push('/');
