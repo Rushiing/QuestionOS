@@ -1238,7 +1238,7 @@ function ChatPageContent() {
                 className={`grid h-11 w-16 shrink-0 place-items-center rounded text-sm font-semibold transition ${
                   isLoading || !user || !input.trim()
                     ? 'cursor-not-allowed bg-[#d7dcd9] text-[#626b66]'
-                    : 'bg-[#161a19] hover:bg-[#213026]'
+                    : 'bg-[#161a19] text-white hover:bg-[#213026]'
                 }`}
                 aria-label="发送"
               >
