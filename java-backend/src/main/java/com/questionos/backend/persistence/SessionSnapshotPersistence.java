@@ -14,7 +14,7 @@ public interface SessionSnapshotPersistence {
 
     void save(ConversationSession session, List<ConversationMessage> messages);
 
-    void delete(String sessionId);
+    void softDelete(ConversationSession session, List<ConversationMessage> messages);
 
     List<LoadedSession> loadAll();
 

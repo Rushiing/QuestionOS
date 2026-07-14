@@ -26,6 +26,9 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -59,6 +62,42 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const hideSessions = async (sessionIds: string[]) => {
+    if (!user || sessionIds.length === 0) return;
+    const label = sessionIds.length === 1 ? '这条历史记录' : `选中的 ${sessionIds.length} 条历史记录`;
+    if (!window.confirm(`确认删除${label}？删除后将不再展示。`)) return;
+
+    setDeleting(true);
+    try {
+      if (sessionIds.length === 1) await sandboxClient.deleteSession(sessionIds[0]);
+      else await sandboxClient.deleteSessions(sessionIds);
+      const deletedIds = new Set(sessionIds);
+      setSessions(current => current.filter(session => !deletedIds.has(session.id)));
+      setExpandedId(current => current && deletedIds.has(current) ? null : current);
+      setSelectedIds(new Set());
+      if (selectionMode) setSelectionMode(false);
+    } catch (error) {
+      console.error('Failed to delete sessions:', error);
+      window.alert('删除失败，请稍后重试');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleSelection = (sessionId: string) => {
+    setSelectedIds(current => {
+      const next = new Set(current);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
   };
 
   const formatDate = (dateString: string) => {
@@ -160,12 +199,40 @@ export default function HistoryPage() {
             </button>
             <h1 className="text-lg font-semibold text-slate-800">历史记录</h1>
           </div>
-          <button
-            onClick={() => router.push('/')}
-            className="rounded-lg bg-[#2f6a4a] px-4 py-2 text-sm text-white transition-colors hover:bg-[#244f39]"
-          >
-            新对话
-          </button>
+          <div className="flex items-center gap-2">
+            {selectionMode ? (
+              <>
+                <button
+                  onClick={() => setSelectedIds(selectedIds.size === sessions.length ? new Set() : new Set(sessions.map(s => s.id)))}
+                  className="rounded-lg px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100"
+                >
+                  {selectedIds.size === sessions.length ? '取消全选' : '全选'}
+                </button>
+                <button
+                  onClick={() => void hideSessions(Array.from(selectedIds))}
+                  disabled={selectedIds.size === 0 || deleting}
+                  className="rounded-lg bg-red-600 px-3 py-2 text-sm text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {deleting ? '删除中...' : `删除${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
+                </button>
+                <button onClick={exitSelectionMode} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">取消</button>
+              </>
+            ) : (
+              <>
+                {sessions.length > 0 && (
+                  <button onClick={() => setSelectionMode(true)} className="rounded-lg px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100">
+                    多选
+                  </button>
+                )}
+                <button
+                  onClick={() => router.push('/')}
+                  className="rounded-lg bg-[#2f6a4a] px-4 py-2 text-sm text-white transition-colors hover:bg-[#244f39]"
+                >
+                  新对话
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -211,13 +278,23 @@ export default function HistoryPage() {
                   {groupSessions.map((session) => (
               <div
                 key={session.id}
-                className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-slate-300 transition-colors"
+                className={`bg-white rounded-xl border overflow-hidden transition-colors ${selectedIds.has(session.id) ? 'border-[#2f6a4a] ring-1 ring-[#2f6a4a]' : 'border-slate-200 hover:border-slate-300'}`}
               >
                 <div
                   className="px-4 py-3 cursor-pointer"
-                  onClick={() => toggleExpand(session.id)}
+                  onClick={() => selectionMode ? toggleSelection(session.id) : toggleExpand(session.id)}
                 >
                   <div className="flex items-start justify-between gap-4">
+                    {selectionMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(session.id)}
+                        onChange={() => toggleSelection(session.id)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="mt-1 h-4 w-4 accent-[#2f6a4a]"
+                        aria-label={`选择 ${session.title || '未命名对话'}`}
+                      />
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-slate-800 font-medium truncate">
                         {session.title || '未命名对话'}
@@ -227,14 +304,32 @@ export default function HistoryPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <svg
-                        className={`w-5 h-5 text-slate-400 transition-transform ${expandedId === session.id ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                      {!selectionMode && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void hideSessions([session.id]);
+                            }}
+                            disabled={deleting}
+                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                            aria-label={`删除 ${session.title || '未命名对话'}`}
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 7h12m-10 0 1 13h6l1-13m-6 0V4h4v3" />
+                            </svg>
+                          </button>
+                          <svg
+                            className={`w-5 h-5 text-slate-400 transition-transform ${expandedId === session.id ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

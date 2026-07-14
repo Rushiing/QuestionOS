@@ -5,6 +5,7 @@ import com.questionos.backend.domain.SessionStatus;
 import com.questionos.backend.domain.MessageRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotEmpty;
 
 import java.time.Instant;
 import java.util.List;
@@ -66,4 +67,8 @@ public class SandboxDtos {
     public record SessionMessagesResponse(String sessionId, List<SessionMessageItem> messages) {}
 
     public record DeleteSessionResponse(String status) {}
+
+    public record BatchDeleteSessionsRequest(@NotEmpty List<@NotBlank String> sessionIds) {}
+
+    public record BatchDeleteSessionsResponse(String status, int deletedCount) {}
 }

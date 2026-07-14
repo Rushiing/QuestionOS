@@ -149,6 +149,27 @@ export const sandboxClient = {
     return data.messages || [];
   },
 
+  deleteSession: async (sessionId: string): Promise<void> => {
+    await fetchJson(`/api/v1/sandbox/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: buildSandboxHeaders(),
+      retries: 0,
+    });
+  },
+
+  deleteSessions: async (sessionIds: string[]): Promise<number> => {
+    const data = await fetchJson<{ deletedCount: number }>('/api/v1/sandbox/sessions/batch-delete', {
+      method: 'POST',
+      headers: {
+        ...buildSandboxHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sessionIds }),
+      retries: 0,
+    });
+    return data.deletedCount;
+  },
+
   registerAgent: async (payload: {
     agentId: string;
     provider: string;

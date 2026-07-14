@@ -12,6 +12,7 @@ public class ConversationSession {
     private final Instant createdAt;
     private volatile Instant lastActivityAt;
     private volatile Instant expiresAt;
+    private volatile Instant deletedAt;
     /** LLM 生成的列表展示标题（异步写入，可能短暂为 null） */
     private volatile String displayTitle;
     private final AtomicLong messageCount;
@@ -49,7 +50,8 @@ public class ConversationSession {
             long turnSeqSnapshot,
             int sandboxSpeakerRoundSnapshot,
             long restoredMessageCount,
-            String sandboxDeliberationScene
+            String sandboxDeliberationScene,
+            Instant deletedAt
     ) {
         ConversationSession s = new ConversationSession(sessionId, ownerUserId, mode, createdAt, expiresAt);
         s.status = status;
@@ -59,6 +61,7 @@ public class ConversationSession {
         s.turnSeq.set(turnSeqSnapshot);
         s.sandboxSpeakerRound.set(sandboxSpeakerRoundSnapshot);
         s.messageCount.set(Math.max(0, restoredMessageCount));
+        s.deletedAt = deletedAt;
         if (sandboxDeliberationScene != null && !sandboxDeliberationScene.isBlank()) {
             s.sandboxDeliberationScene = sandboxDeliberationScene.trim();
         }
@@ -92,6 +95,22 @@ public class ConversationSession {
 
     public void complete() {
         status = SessionStatus.COMPLETED;
+    }
+
+    public void softDelete(Instant now) {
+        deletedAt = now;
+    }
+
+    public void restoreAfterFailedDelete() {
+        deletedAt = null;
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
     }
 
     public String getSessionId() {

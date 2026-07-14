@@ -18,6 +18,7 @@ public class PersistedSessionData {
     private Instant createdAt;
     private Instant lastActivityAt;
     private Instant expiresAt;
+    private Instant deletedAt;
     private String displayTitle;
     private long turnSeq;
     private int sandboxSpeakerRound;
@@ -79,6 +80,14 @@ public class PersistedSessionData {
 
     public void setExpiresAt(Instant expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
     }
 
     public String getDisplayTitle() {

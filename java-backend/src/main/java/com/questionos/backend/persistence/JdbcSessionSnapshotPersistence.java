@@ -55,8 +55,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                                 INSERT INTO qos_conversation_session (
                                   session_id, owner_user_id, mode, status,
                                   created_at, last_activity_at, expires_at, display_title,
-                                  turn_seq, sandbox_speaker_round, sandbox_deliberation_scene
-                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                                  turn_seq, sandbox_speaker_round, sandbox_deliberation_scene, deleted_at
+                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                                 ON CONFLICT (session_id) DO UPDATE SET
                                   owner_user_id = EXCLUDED.owner_user_id,
                                   mode = EXCLUDED.mode,
@@ -66,7 +66,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                                   display_title = EXCLUDED.display_title,
                                   turn_seq = EXCLUDED.turn_seq,
                                   sandbox_speaker_round = EXCLUDED.sandbox_speaker_round,
-                                  sandbox_deliberation_scene = EXCLUDED.sandbox_deliberation_scene
+                                  sandbox_deliberation_scene = EXCLUDED.sandbox_deliberation_scene,
+                                  deleted_at = EXCLUDED.deleted_at
                                 """,
                         session.getSessionId(),
                         session.getOwnerUserId(),
@@ -78,7 +79,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                         session.getDisplayTitle(),
                         session.currentTurnSeq(),
                         session.currentSandboxSpeakerRound(),
-                        session.getSandboxDeliberationScene());
+                        session.getSandboxDeliberationScene(),
+                        session.getDeletedAt() == null ? null : Timestamp.from(session.getDeletedAt()));
                 jdbc.update("DELETE FROM qos_conversation_message WHERE session_id = ?", session.getSessionId());
                 for (ConversationMessage m : messages) {
                     jdbc.update(
@@ -102,12 +104,11 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
     }
 
     @Override
-    public void delete(String sessionId) {
-        try {
-            jdbc.update("DELETE FROM qos_conversation_session WHERE session_id = ?", sessionId);
-        } catch (Exception e) {
-            log.warn("failed to delete persisted session {}", sessionId, e);
-        }
+    public void softDelete(ConversationSession session, List<ConversationMessage> messages) {
+        jdbc.update(
+                "UPDATE qos_conversation_session SET deleted_at = ? WHERE session_id = ?",
+                Timestamp.from(session.getDeletedAt()),
+                session.getSessionId());
     }
 
     /**
@@ -130,11 +131,16 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
             }
         };
         jdbc.query(
-                "SELECT * FROM qos_conversation_message ORDER BY session_id, created_at ASC, message_id ASC",
+                """
+                        SELECT m.* FROM qos_conversation_message m
+                        JOIN qos_conversation_session s ON s.session_id = m.session_id
+                        WHERE s.deleted_at IS NULL
+                        ORDER BY m.session_id, m.created_at ASC, m.message_id ASC
+                        """,
                 collectMessages);
 
         List<ConversationSession> sessionRows = new ArrayList<>();
-        jdbc.query("SELECT * FROM qos_conversation_session ORDER BY created_at ASC", rs -> {
+        jdbc.query("SELECT * FROM qos_conversation_session WHERE deleted_at IS NULL ORDER BY created_at ASC", rs -> {
             try {
                 sessionRows.add(mapSessionRow(rs, bySession.getOrDefault(rs.getString("session_id"), List.of()).size()));
             } catch (SQLException | RuntimeException rowErr) {
@@ -165,6 +171,7 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
         long turnSeq = rs.getLong("turn_seq");
         int sandbox = rs.getInt("sandbox_speaker_round");
         String deliberationScene = rs.getString("sandbox_deliberation_scene");
+        Instant deletedAt = instantOf(rs, "deleted_at");
         return ConversationSession.restore(
                 sid,
                 owner != null ? owner : "",
@@ -177,7 +184,8 @@ public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistenc
                 turnSeq,
                 sandbox,
                 messageCount,
-                deliberationScene);
+                deliberationScene,
+                deletedAt);
     }
 
     /** pgjdbc 不支持 getObject(col, Instant.class) 读 timestamptz（生产 hydration 自 4 月起逐行失败的根因）；必须经 Timestamp 转换 */

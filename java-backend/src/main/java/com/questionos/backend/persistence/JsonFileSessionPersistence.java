@@ -87,6 +87,7 @@ public class JsonFileSessionPersistence implements SessionSnapshotPersistence {
             data.setTurnSeq(session.currentTurnSeq());
             data.setSandboxSpeakerRound(session.currentSandboxSpeakerRound());
             data.setSandboxDeliberationScene(session.getSandboxDeliberationScene());
+            data.setDeletedAt(session.getDeletedAt());
             List<PersistedMessageData> out = new ArrayList<>();
             for (ConversationMessage m : messageList) {
                 PersistedMessageData pm = new PersistedMessageData();
@@ -113,15 +114,9 @@ public class JsonFileSessionPersistence implements SessionSnapshotPersistence {
         }
     }
 
-    public void delete(String sessionId) {
-        if (!enabled) {
-            return;
-        }
-        try {
-            Files.deleteIfExists(fileFor(sessionId));
-        } catch (IOException e) {
-            log.warn("failed to delete persisted session {}", sessionId, e);
-        }
+    @Override
+    public void softDelete(ConversationSession session, List<ConversationMessage> messageList) {
+        save(session, messageList);
     }
 
     public List<SessionSnapshotPersistence.LoadedSession> loadAll() {
@@ -136,7 +131,7 @@ public class JsonFileSessionPersistence implements SessionSnapshotPersistence {
                     .forEach(path -> {
                         try {
                             SessionSnapshotPersistence.LoadedSession one = loadFile(path);
-                            if (one != null) {
+                            if (one != null && !one.session().isDeleted()) {
                                 result.add(one);
                             }
                         } catch (Exception e) {
@@ -184,7 +179,8 @@ public class JsonFileSessionPersistence implements SessionSnapshotPersistence {
                 data.getTurnSeq(),
                 data.getSandboxSpeakerRound(),
                 msgs.size(),
-                data.getSandboxDeliberationScene()
+                data.getSandboxDeliberationScene(),
+                data.getDeletedAt()
         );
         return new SessionSnapshotPersistence.LoadedSession(session, msgs);
     }

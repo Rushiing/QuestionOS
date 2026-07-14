@@ -141,14 +141,26 @@ public class SandboxController {
     }
 
     @DeleteMapping("/{sessionId}")
-    public ResponseEntity<SandboxDtos.DeleteSessionResponse> delete(
+    public Mono<ResponseEntity<SandboxDtos.DeleteSessionResponse>> delete(
             org.springframework.web.server.ServerWebExchange exchange,
             @PathVariable String sessionId
     ) {
-        boolean deleted = sessionService.deleteSession(currentUserId(exchange), sessionId);
-        if (!deleted) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(new SandboxDtos.DeleteSessionResponse("deleted"));
+        String uid = currentUserId(exchange);
+        return Mono.fromCallable(() -> sessionService.softDeleteSession(uid, sessionId))
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(deleted -> deleted
+                        ? ResponseEntity.ok(new SandboxDtos.DeleteSessionResponse("deleted"))
+                        : ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/batch-delete")
+    public Mono<ResponseEntity<SandboxDtos.BatchDeleteSessionsResponse>> batchDelete(
+            org.springframework.web.server.ServerWebExchange exchange,
+            @Valid @RequestBody SandboxDtos.BatchDeleteSessionsRequest request
+    ) {
+        String uid = currentUserId(exchange);
+        return Mono.fromCallable(() -> sessionService.softDeleteSessions(uid, request.sessionIds()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(count -> ResponseEntity.ok(new SandboxDtos.BatchDeleteSessionsResponse("deleted", count)));
     }
 }

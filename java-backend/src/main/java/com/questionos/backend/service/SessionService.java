@@ -209,7 +209,7 @@ public class SessionService {
 
     public Optional<ConversationSession> getSession(String ownerUserId, String sessionId) {
         ConversationSession session = sessions.get(sessionId);
-        if (session == null || !session.getOwnerUserId().equals(ownerUserId)) {
+        if (session == null || session.isDeleted() || !session.getOwnerUserId().equals(ownerUserId)) {
             return Optional.empty();
         }
         return Optional.of(session);
@@ -219,6 +219,7 @@ public class SessionService {
         int totalInMemory = sessions.size();
         List<ConversationSession> filtered = sessions.values().stream()
                 .filter(s -> s.getOwnerUserId().equals(ownerUserId))
+                .filter(s -> !s.isDeleted())
                 .sorted(Comparator.comparing(ConversationSession::getCreatedAt).reversed())
                 .toList();
         log.info("listSessions ownerUserId={} totalInMemory={} matchedForUser={}",
@@ -232,7 +233,7 @@ public class SessionService {
 
     public Optional<String> acceptUserMessage(String ownerUserId, String sessionId, String content, String idemKey) {
         ConversationSession session = sessions.get(sessionId);
-        if (session == null || !session.getOwnerUserId().equals(ownerUserId)) {
+        if (session == null || session.isDeleted() || !session.getOwnerUserId().equals(ownerUserId)) {
             return Optional.empty();
         }
         String key = sessionId + ":" + idemKey;
@@ -458,24 +459,34 @@ public class SessionService {
         return Optional.of(userMessage.messageId());
     }
 
-    public boolean deleteSession(String ownerUserId, String sessionId) {
+    public boolean softDeleteSession(String ownerUserId, String sessionId) {
         ConversationSession existing = sessions.get(sessionId);
-        if (existing == null || !existing.getOwnerUserId().equals(ownerUserId)) {
+        if (existing == null || existing.isDeleted() || !existing.getOwnerUserId().equals(ownerUserId)) {
             return false;
         }
-        boolean existed = sessions.remove(sessionId) != null;
-        messages.remove(sessionId);
-        eventStore.remove(sessionId);
-        sinks.remove(sessionId);
-        if (existed) {
-            sessionPersistence.delete(sessionId);
+        existing.softDelete(Instant.now());
+        try {
+            sessionPersistence.softDelete(existing, List.copyOf(messages.getOrDefault(sessionId, List.of())));
+        } catch (RuntimeException e) {
+            existing.restoreAfterFailedDelete();
+            throw e;
         }
-        return existed;
+        return true;
+    }
+
+    public int softDeleteSessions(String ownerUserId, List<String> sessionIds) {
+        int deleted = 0;
+        for (String sessionId : sessionIds) {
+            if (softDeleteSession(ownerUserId, sessionId)) {
+                deleted++;
+            }
+        }
+        return deleted;
     }
 
     public Flux<ServerSentEvent<String>> stream(String ownerUserId, String sessionId, Long lastEventId) {
         ConversationSession session = sessions.get(sessionId);
-        if (session == null || !session.getOwnerUserId().equals(ownerUserId)) {
+        if (session == null || session.isDeleted() || !session.getOwnerUserId().equals(ownerUserId)) {
             return Flux.empty();
         }
         Long effectiveLastEventId = lastEventId;
