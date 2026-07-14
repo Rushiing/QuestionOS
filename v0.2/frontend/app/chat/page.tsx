@@ -994,9 +994,15 @@ function ChatPageContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white transition-opacity hover:opacity-85"
+              aria-label="返回首页"
+              title="返回首页"
+            >
               Q
-            </div>
+            </button>
             <div className="min-w-0">
               <h1 className="flex items-center gap-2 font-serif text-base font-semibold leading-tight tracking-[-0.01em]">
                 思维校准
