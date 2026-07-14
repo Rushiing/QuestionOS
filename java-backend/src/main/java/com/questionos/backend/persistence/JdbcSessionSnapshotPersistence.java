@@ -8,6 +8,7 @@ import com.questionos.backend.domain.SessionStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,7 @@ import java.util.Map;
  */
 @Component
 @ConditionalOnProperty(name = "questionos.session.persistence.backend", havingValue = "jdbc")
+@DependsOnDatabaseInitialization
 public class JdbcSessionSnapshotPersistence implements SessionSnapshotPersistence {
     private static final Logger log = LoggerFactory.getLogger(JdbcSessionSnapshotPersistence.class);
 
