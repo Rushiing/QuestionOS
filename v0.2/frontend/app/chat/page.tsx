@@ -43,7 +43,7 @@ const calibrationMarkdownComponents: Components = {
     if (isInline) {
       return (
         <code
-          className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-sm font-medium"
+          className="rounded border border-[#e2e7e4] bg-[#f7f8f8] px-1.5 py-0.5 font-mono text-[0.88em] text-[#303634]"
           {...props}
         >
           {children}
@@ -51,7 +51,7 @@ const calibrationMarkdownComponents: Components = {
       );
     }
     return (
-      <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl my-3 overflow-x-auto text-sm whitespace-pre-wrap border border-slate-700">
+      <pre className="my-3 overflow-x-auto whitespace-pre-wrap rounded border border-[#d5ded9] bg-[#f7f8f8] p-4 font-mono text-sm text-[#303634]">
         <code {...props}>{children}</code>
       </pre>
     );
@@ -61,57 +61,57 @@ const calibrationMarkdownComponents: Components = {
     if (label.includes('本轮追问')) {
       return (
         <div className="mb-3 mt-0">
-          <span className="inline-flex items-center rounded-full bg-gradient-to-r from-teal-600 to-teal-500 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-teal-500/30">
+          <span className="inline-flex items-center rounded bg-[#16a79a] px-3.5 py-1.5 text-[13px] font-semibold tracking-wide text-white shadow-[0_6px_16px_rgba(22,167,154,0.18)]">
             本轮追问
           </span>
         </div>
       );
     }
     return (
-      <h2 className="mb-2 mt-5 border-b border-slate-100 pb-2 text-base font-bold text-slate-800">
+      <h2 className="mb-2 mt-6 border-b border-[#e2e7e4] pb-2 font-serif text-lg font-semibold tracking-[-0.01em] text-[#161a19] first:mt-0">
         {children}
       </h2>
     );
   },
   h3({ children }) {
     return (
-      <h3 className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold leading-snug text-slate-900">
-        <span className="h-4 w-1 shrink-0 rounded-full bg-gradient-to-b from-teal-500 to-teal-600" aria-hidden />
+      <h3 className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold leading-snug text-[#161a19]">
+        <span className="h-4 w-1 shrink-0 rounded-full bg-[#16a79a]" aria-hidden />
         <span>{children}</span>
       </h3>
     );
   },
   blockquote({ children }) {
     return (
-      <blockquote className="my-3 rounded-xl border border-teal-100/80 bg-gradient-to-br from-teal-50/90 via-white to-teal-50/80 px-4 py-3.5 not-italic text-slate-800 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100/80">
-        <div className="text-[1.0625rem] font-normal leading-relaxed tracking-tight text-slate-700 [&_strong]:font-normal">
+      <blockquote className="my-3 rounded border border-[#bfe8e2] bg-[#fbfffe] px-4 py-3.5 not-italic text-[#303634]">
+        <div className="text-[1.02rem] font-normal leading-relaxed tracking-tight text-[#303634] [&_strong]:font-normal">
           {children}
         </div>
       </blockquote>
     );
   },
   p({ children }) {
-    return <p className="my-1.5 text-sm font-normal leading-relaxed text-slate-600">{children}</p>;
+    return <p className="my-1.5 text-[15px] font-normal leading-7 text-[#303634]">{children}</p>;
   },
   em({ children }) {
-    return <em className="text-sm font-normal not-italic text-slate-600">{children}</em>;
+    return <em className="font-normal not-italic text-[#303634]">{children}</em>;
   },
   strong({ children }) {
-    return <strong className="font-normal text-slate-600">{children}</strong>;
+    return <strong className="font-semibold text-[#161a19]">{children}</strong>;
   },
   hr() {
-    return <hr className="my-5 border-0 bg-gradient-to-r from-transparent via-slate-200 to-transparent h-px" />;
+    return <hr className="my-5 h-px border-0 bg-[#e2e7e4]" />;
   },
   ol({ children }) {
     return (
-      <ol className="my-2 ml-4 list-decimal space-y-1 text-sm font-normal leading-relaxed text-slate-600 [&_strong]:font-normal">
+      <ol className="my-2 ml-4 list-decimal space-y-1 text-[15px] font-normal leading-7 text-[#303634] marker:text-[#626b66]">
         {children}
       </ol>
     );
   },
   ul({ children }) {
     return (
-      <ul className="my-2 ml-4 list-disc space-y-1 text-sm font-normal leading-relaxed text-slate-600 [&_strong]:font-normal">
+      <ul className="my-2 ml-4 list-disc space-y-1 text-[15px] font-normal leading-7 text-[#303634] marker:text-[#626b66]">
         {children}
       </ul>
     );
@@ -531,24 +531,24 @@ function CalibrationStreamingSkeleton() {
   return (
     <div className="calibration-md text-sm leading-relaxed">
       <div className="mb-3 mt-0">
-        <span className="inline-flex items-center rounded-full bg-gradient-to-r from-teal-600 to-teal-500 px-3.5 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-white shadow-md shadow-teal-500/30">
+        <span className="inline-flex items-center rounded bg-[#16a79a] px-3.5 py-1.5 text-[13px] font-semibold tracking-wide text-white shadow-[0_6px_16px_rgba(22,167,154,0.18)]">
           本轮追问
         </span>
       </div>
-      <div className="my-3 rounded-xl border border-teal-100/80 bg-gradient-to-br from-teal-50/90 via-white to-teal-50/80 px-4 py-3.5 ring-1 ring-slate-100/80">
+      <div className="my-3 rounded border border-[#bfe8e2] bg-[#fbfffe] px-4 py-3.5">
         <div className="space-y-2.5">
-          <div className="h-4 max-w-[88%] rounded-md bg-slate-200/70 animate-pulse" />
-          <div className="h-4 w-full rounded-md bg-slate-200/60 animate-pulse" />
-          <div className="h-4 max-w-[72%] rounded-md bg-slate-200/50 animate-pulse" />
+          <div className="h-4 max-w-[88%] animate-pulse rounded bg-[#dce6e1]" />
+          <div className="h-4 w-full animate-pulse rounded bg-[#e7eeea]" />
+          <div className="h-4 max-w-[72%] animate-pulse rounded bg-[#eef3f0]" />
         </div>
       </div>
-      <div className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold text-slate-400">
-        <span className="h-4 w-1 shrink-0 rounded-full bg-slate-200 animate-pulse" aria-hidden />
-        <span className="inline-block h-4 w-28 rounded bg-slate-200/90 animate-pulse" />
+      <div className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold text-[#95a09a]">
+        <span className="h-4 w-1 shrink-0 animate-pulse rounded-full bg-[#dce6e1]" aria-hidden />
+        <span className="inline-block h-4 w-28 animate-pulse rounded bg-[#dce6e1]" />
       </div>
-      <div className="h-3 max-w-md rounded bg-slate-100 animate-pulse" />
-      <p className="mt-4 text-xs text-slate-400">正在组织追问与版面…</p>
-      <span className="inline-block mt-2 animate-pulse text-slate-400">▌</span>
+      <div className="h-3 max-w-md animate-pulse rounded bg-[#eef3f0]" />
+      <p className="mt-4 text-xs text-[#95a09a]">正在组织追问与版面…</p>
+      <span className="mt-2 inline-block animate-pulse text-[#95a09a]">▌</span>
     </div>
   );
 }
@@ -1091,7 +1091,7 @@ function ChatPageContent() {
           )}
 
           {/* Messages */}
-          <div className="space-y-4">
+          <div className="space-y-5">
             {messages.map((message, index) => {
               // 判断是否是首轮AI回复：第一条assistant消息
               const isFirstAssistantMessage = 
@@ -1101,26 +1101,39 @@ function ChatPageContent() {
               return (
                 <div
                   key={message.id}
-                  className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div
-                    className={`max-w-[82%] rounded border px-4 py-3 ${
-                      message.role === 'user'
-                        ? 'border-[#e2e7e4] bg-[#f9faf9] text-[#303634]'
-                        : 'border-[#e2e7e4] bg-white text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]'
-                    }`}
-                  >
-                    {message.role === 'user' ? (
+                  {message.role === 'user' ? (
+                    <div className="max-w-[min(680px,92%)] rounded border border-[#d5ded9] bg-white px-5 py-3.5 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#95a09a]">You</span>
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#2f6a4a]" aria-hidden />
+                      </div>
                       <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
                         {message.content}
                       </div>
-                    ) : (
-                      <AIMessage 
-                        content={message.content} 
-                        onContinueWithQuestion={handleContinueWithQuestion}
-                      />
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="flex w-full max-w-[min(700px,100%)] items-start gap-3">
+                      <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
+                        Q
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#2f6a4a]">
+                            {isFirstAssistantMessage ? 'Calibrate · First Round' : 'Calibrate'}
+                          </span>
+                          <span className="h-px min-w-5 flex-1 bg-[#e2e7e4]" aria-hidden />
+                        </div>
+                        <div className="rounded border border-[#e2e7e4] bg-white px-5 py-4 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.04)]">
+                          <AIMessage
+                            content={message.content}
+                            onContinueWithQuestion={handleContinueWithQuestion}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1128,8 +1141,19 @@ function ChatPageContent() {
             {/* 流式阶段：先展示与成稿一致的版式骨架，不展示原始 JSON */}
             {streamingSkeletonActive && (
               <div className="flex justify-start">
-                <div className="max-w-[82%] rounded border border-[#e2e7e4] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
-                  <CalibrationStreamingSkeleton />
+                <div className="flex w-full max-w-[min(700px,100%)] items-start gap-3">
+                  <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
+                    Q
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#2f6a4a]">Calibrate</span>
+                      <span className="h-px min-w-5 flex-1 bg-[#e2e7e4]" aria-hidden />
+                    </div>
+                    <div className="rounded border border-[#e2e7e4] bg-white px-5 py-4 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.04)]">
+                      <CalibrationStreamingSkeleton />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1137,11 +1161,22 @@ function ChatPageContent() {
             {/* 成稿 Markdown：delta 结束后由打字机效果逐段显现 */}
             {streamingContent && (
               <div className="flex justify-start">
-                <div className="max-w-[82%] rounded border border-[#e2e7e4] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
-                  <AIMessage 
-                    content={streamingContent} 
-                  />
-                  {isLoading && <span className="animate-pulse">▌</span>}
+                <div className="flex w-full max-w-[min(700px,100%)] items-start gap-3">
+                  <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
+                    Q
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#2f6a4a]">Calibrate</span>
+                      <span className="h-px min-w-5 flex-1 bg-[#e2e7e4]" aria-hidden />
+                    </div>
+                    <div className="rounded border border-[#e2e7e4] bg-white px-5 py-4 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.04)]">
+                      <AIMessage
+                        content={streamingContent}
+                      />
+                      {isLoading && <span className="animate-pulse text-[#2f6a4a]">▌</span>}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1152,11 +1187,16 @@ function ChatPageContent() {
               !streamingSkeletonActive &&
               streamingTypeTarget === null && (
               <div className="flex justify-start">
-                <div className="rounded border border-[#e2e7e4] bg-white px-4 py-3 shadow-[0_1px_0_rgba(22,26,25,0.04)]">
-                  <div className="flex gap-1">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]"></span>
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]" style={{ animationDelay: '0.1s' }}></span>
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]" style={{ animationDelay: '0.2s' }}></span>
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
+                    Q
+                  </div>
+                  <div className="rounded border border-[#e2e7e4] bg-white px-4 py-3 shadow-[0_1px_0_rgba(22,26,25,0.04)]">
+                    <div className="flex gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]"></span>
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]" style={{ animationDelay: '0.1s' }}></span>
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]" style={{ animationDelay: '0.2s' }}></span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1169,17 +1209,17 @@ function ChatPageContent() {
 
       {/* Input：欢迎态下先选场景或点「自己输入」后再显示 */}
       {showInputBar && (
-        <div className="shrink-0 border-t border-[#e2e7e4] bg-[#f7f8f8]/95 px-5 py-3 backdrop-blur-md">
+        <div className="shrink-0 border-t border-[#e2e7e4] bg-[#f7f8f8]/95 px-5 py-4 backdrop-blur-md">
           <div className="mx-auto max-w-[760px]">
-            <div className="flex gap-3 items-end">
-              <div className="flex-1 relative">
+            <div className="flex items-end gap-2 rounded border border-[#d5ded9] bg-white p-2 shadow-[0_-1px_0_rgba(22,26,25,0.02),0_8px_22px_rgba(22,26,25,0.05)]">
+              <div className="relative flex-1">
                 <textarea
                   ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                   placeholder={user ? '输入你的回答…' : '登录后开始对话'}
-                  className="w-full resize-none rounded border border-[#161a1938] bg-white px-4 py-3 text-[15px] text-[#161a19] focus:border-[#2f6a4a] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#2f6a4a1f]"
+                  className="w-full resize-none rounded border-0 bg-transparent px-3 py-2.5 text-[15px] leading-6 text-[#161a19] placeholder:text-[#95a09a] focus:outline-none"
                   rows={1}
                   style={{ minHeight: '48px', maxHeight: '120px' }}
                   disabled={isLoading || !user}
@@ -1189,13 +1229,16 @@ function ChatPageContent() {
                 type="button"
                 onClick={() => handleSendMessage()}
                 disabled={isLoading || !user || !input.trim()}
-                className={`rounded px-5 py-3 font-semibold text-white transition ${
+                className={`grid h-11 w-16 shrink-0 place-items-center rounded text-sm font-semibold transition ${
                   isLoading || !user || !input.trim()
                     ? 'cursor-not-allowed bg-[#d7dcd9] text-[#626b66]'
                     : 'bg-[#161a19] hover:bg-[#213026]'
                 }`}
+                aria-label="发送"
               >
-                发送
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M5 12h14m-5-5 5 5-5 5" />
+                </svg>
               </button>
             </div>
           </div>

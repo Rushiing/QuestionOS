@@ -46,28 +46,29 @@ interface Message {
 /** 沙盘 Agent 回复：统一标题/分隔线/列表/表格版式（与整合报告等 Markdown 结构配合） */
 const consultAgentMarkdownComponents: Components = {
   h2: ({ node, children, ...props }) => (
-    <h2 className="mt-6 mb-2 pb-2 text-lg font-bold tracking-tight text-slate-900 border-b border-slate-200 first:mt-0" {...props}>
+    <h2 className="mb-2 mt-6 border-b border-[#e2e7e4] pb-2 font-serif text-lg font-semibold tracking-[-0.01em] text-[#161a19] first:mt-0" {...props}>
       {children}
     </h2>
   ),
   h3: ({ node, children, ...props }) => (
-    <h3 className="mt-5 mb-2 text-base font-semibold text-slate-800" {...props}>
-      {children}
+    <h3 className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold text-[#161a19]" {...props}>
+      <span className="h-4 w-1 shrink-0 rounded-full bg-[#2f6a4a]" aria-hidden />
+      <span>{children}</span>
     </h3>
   ),
-  hr: ({ node, ...props }) => <hr className="my-5 border-0 border-t border-slate-200" {...props} />,
+  hr: ({ node, ...props }) => <hr className="my-5 border-0 border-t border-[#e2e7e4]" {...props} />,
   p: ({ node, children, ...props }) => (
-    <p className="my-2.5 leading-relaxed text-slate-700" {...props}>
+    <p className="my-2 text-[15px] leading-7 text-[#303634]" {...props}>
       {children}
     </p>
   ),
   ul: ({ node, children, ...props }) => (
-    <ul className="my-3 space-y-2 pl-5 list-disc marker:text-slate-400 text-slate-700" {...props}>
+    <ul className="my-3 list-disc space-y-1.5 pl-5 text-[15px] leading-7 text-[#303634] marker:text-[#95a09a]" {...props}>
       {children}
     </ul>
   ),
   ol: ({ node, children, ...props }) => (
-    <ol className="my-3 list-decimal space-y-2 pl-5 text-slate-700 marker:text-slate-400" {...props}>
+    <ol className="my-3 list-decimal space-y-1.5 pl-5 text-[15px] leading-7 text-[#303634] marker:text-[#95a09a]" {...props}>
       {children}
     </ol>
   ),
@@ -77,39 +78,39 @@ const consultAgentMarkdownComponents: Components = {
     </li>
   ),
   strong: ({ node, children, ...props }) => (
-    <strong className="font-semibold text-slate-900" {...props}>
+    <strong className="font-semibold text-[#161a19]" {...props}>
       {children}
     </strong>
   ),
   table: ({ node, children, ...props }) => (
-    <div className="my-5 w-full overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-      <table className="w-full min-w-[300px] border-collapse text-left text-[0.9375rem] text-slate-700" {...props}>
+    <div className="my-5 w-full overflow-x-auto rounded border border-[#d5ded9] bg-white">
+      <table className="w-full min-w-[300px] border-collapse text-left text-[0.9375rem] text-[#303634]" {...props}>
         {children}
       </table>
     </div>
   ),
   thead: ({ node, children, ...props }) => (
-    <thead className="bg-slate-50" {...props}>
+    <thead className="bg-[#f7f8f8]" {...props}>
       {children}
     </thead>
   ),
   tbody: ({ node, children, ...props }) => (
-    <tbody className="divide-y divide-slate-100 bg-white" {...props}>
+    <tbody className="divide-y divide-[#e2e7e4] bg-white" {...props}>
       {children}
     </tbody>
   ),
   tr: ({ node, children, ...props }) => (
-    <tr className="transition-colors hover:bg-slate-50/90" {...props}>
+    <tr className="transition-colors hover:bg-[#f9faf9]" {...props}>
       {children}
     </tr>
   ),
   th: ({ node, children, ...props }) => (
-    <th className="border border-slate-200 px-3 py-2.5 align-middle text-xs font-semibold text-slate-600" {...props}>
+    <th className="border border-[#e2e7e4] px-3 py-2.5 align-middle text-xs font-semibold text-[#626b66]" {...props}>
       {children}
     </th>
   ),
   td: ({ node, children, ...props }) => (
-    <td className="border border-slate-200 px-3 py-2.5 align-middle leading-relaxed" {...props}>
+    <td className="border border-[#e2e7e4] px-3 py-2.5 align-middle leading-relaxed" {...props}>
       {children}
     </td>
   ),
@@ -120,7 +121,7 @@ const sandboxRouteMarkdownComponents: Components = {
   ...consultAgentMarkdownComponents,
   h3: ({ node, children, ...props }) => (
     <h3
-      className="mt-0 mb-3 border-b border-[#c3cbc6] pb-2.5 font-serif text-xl font-semibold tracking-tight text-[#161a19]"
+      className="mb-3 mt-0 border-b border-[#e2e7e4] pb-2.5 font-serif text-lg font-semibold tracking-tight text-[#161a19]"
       {...props}
     >
       {children}
@@ -133,7 +134,7 @@ const sandboxClassifyMarkdownComponents: Components = {
   ...consultAgentMarkdownComponents,
   h3: ({ node, children, ...props }) => (
     <h3
-      className="mt-0 mb-3 border-b border-[#c3cbc6] pb-2.5 font-serif text-xl font-semibold tracking-tight text-[#161a19]"
+      className="mb-3 mt-0 border-b border-[#e2e7e4] pb-2.5 font-serif text-lg font-semibold tracking-tight text-[#161a19]"
       {...props}
     >
       {children}
@@ -983,56 +984,85 @@ export default function ConsultPage() {
               </div>
             )}
             {/* 消息列表 */}
-            <div className="flex-1 space-y-4 overflow-y-auto pb-4">
+            <div className="flex-1 space-y-5 overflow-y-auto pb-5">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`max-w-[84%] ${msg.role === 'user' ? 'order-2' : 'order-1'}`}>
-                    {msg.role === 'user' ? (
-                      <div className="rounded border border-[#e2e7e4] bg-[#f9faf9] px-4 py-3 text-[#303634]">
-                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
+                  {msg.role === 'user' ? (
+                    <div className="max-w-[min(680px,92%)] rounded border border-[#d5ded9] bg-white px-5 py-3.5 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#95a09a]">Issue</span>
+                        <span className="rounded border border-[#e2e7e4] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[#2f6a4a]">Sandbox</span>
                       </div>
-                    ) : msg.variant === 'sandbox_classify' ? (
-                      <div className="rounded border border-[#c3cbc6] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.06)]">
-                        <div className="max-w-none text-[0.9375rem] leading-relaxed markdown-content consult-agent-md">
+                      <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
+                    </div>
+                  ) : msg.variant === 'sandbox_classify' ? (
+                    <div className="w-full max-w-[720px] overflow-hidden rounded border border-[#d5ded9] bg-white text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.04)]">
+                      <div className="flex items-center justify-between gap-3 border-b border-[#e2e7e4] bg-[#f9faf9] px-4 py-3">
+                        <div>
+                          <p className="font-serif text-lg font-semibold leading-tight text-[#161a19]">议题分诊</p>
+                          <p className="mt-1 text-xs text-[#626b66]">判断问题是否已经足够进入多角色审议。</p>
+                        </div>
+                        <span className="rounded border border-[#2f6a4a66] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[#2f6a4a]">Step 01</span>
+                      </div>
+                      <div className="px-4 py-3">
+                        <div className="markdown-content consult-agent-md max-w-none text-[0.9375rem] leading-relaxed">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={sandboxClassifyMarkdownComponents}>
                             {msg.content}
                           </ReactMarkdown>
                         </div>
                       </div>
-                    ) : msg.variant === 'sandbox_route' ? (
-                      <div className="rounded border border-[#c3cbc6] bg-[#edf5ef] px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.06)]">
-                        <div className="max-w-none text-[0.9375rem] leading-relaxed markdown-content consult-agent-md">
+                    </div>
+                  ) : msg.variant === 'sandbox_route' ? (
+                    <div className="w-full max-w-[720px] overflow-hidden rounded border border-[#cbd8d0] bg-[#fbfffe] text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.04)]">
+                      <div className="flex items-center justify-between gap-3 border-b border-[#d6e4dc] bg-[#edf5ef] px-4 py-3">
+                        <div>
+                          <p className="font-serif text-lg font-semibold leading-tight text-[#161a19]">审议路由</p>
+                          <p className="mt-1 text-xs text-[#626b66]">确定审议室、角度和接下来要承压的问题。</p>
+                        </div>
+                        <span className="rounded bg-[#161a19] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-white">Step 02</span>
+                      </div>
+                      <div className="px-4 py-3">
+                        <div className="markdown-content consult-agent-md max-w-none text-[0.9375rem] leading-relaxed">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={sandboxRouteMarkdownComponents}>
                             {msg.content}
                           </ReactMarkdown>
                         </div>
                       </div>
-                    ) : msg.role === 'system' ? (
-                      <div className="rounded border border-dashed border-[#c3cbc6] bg-[#f9faf9] px-4 py-2 text-center text-sm text-[#626b66]">
-                        {msg.content}
-                      </div>
-                    ) : (
-                      <div className="overflow-hidden rounded border border-[#e2e7e4] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="grid h-8 w-8 place-items-center rounded border border-[#c3cbc6] bg-[#f9faf9] text-base">{msg.agent_avatar}</span>
-                          <span className="font-semibold text-[#303634]">{msg.agent_name}</span>
+                    </div>
+                  ) : msg.role === 'system' ? (
+                    <div className="mx-auto max-w-[560px] rounded border border-dashed border-[#c3cbc6] bg-[#f9faf9] px-4 py-2 text-center text-sm text-[#626b66]">
+                      {msg.content}
+                    </div>
+                  ) : (
+                    <div className="flex w-full max-w-[720px] items-start gap-3">
+                      <span className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded border border-[#d5ded9] bg-white text-base shadow-[0_1px_0_rgba(22,26,25,0.04)]">
+                        {msg.agent_avatar || agentMeta(msg.agent_id || '').avatar}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#2f6a4a]">
+                            {msg.agent_name || agentMeta(msg.agent_id || '').name}
+                          </span>
                           {msg.is_streaming && (
                             <span className="animate-pulse text-xs text-[#2f6a4a]">输出中...</span>
                           )}
+                          <span className="h-px min-w-5 flex-1 bg-[#e2e7e4]" aria-hidden />
                         </div>
-                        <div className="max-w-none text-[0.9375rem] leading-relaxed text-[#303634]">
-                          <div className="markdown-content consult-agent-md">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={consultAgentMarkdownComponents}>
-                              {agentMarkdownSource(msg)}
-                            </ReactMarkdown>
+                        <div className="border-l-[3px] border-l-[#2f6a4a] bg-white px-5 py-4 text-[#303634] shadow-[inset_0_0_0_1px_#e2e7e4,0_1px_0_rgba(22,26,25,0.04)]">
+                          <div className="max-w-none text-[0.9375rem] leading-relaxed text-[#303634]">
+                            <div className="markdown-content consult-agent-md">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={consultAgentMarkdownComponents}>
+                                {agentMarkdownSource(msg)}
+                              </ReactMarkdown>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
               <div ref={messagesEndRef} />
@@ -1040,8 +1070,8 @@ export default function ConsultPage() {
 
             {/* 输入区域 */}
             <div className="mt-4 border-t border-[#e2e7e4] pt-4">
-              <div className="flex gap-3">
-                <div className="flex-1 relative">
+              <div className="flex items-end gap-2 rounded border border-[#d5ded9] bg-white p-2 shadow-[0_-1px_0_rgba(22,26,25,0.02),0_8px_22px_rgba(22,26,25,0.05)]">
+                <div className="relative flex-1">
                   <textarea
                     ref={inputRef}
                     value={inputMessage}
@@ -1049,7 +1079,7 @@ export default function ConsultPage() {
                     onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                     placeholder={isAgentResponding ? "等待专家回复..." : "继续追问或补充..."}
                     disabled={isAgentResponding}
-                    className="h-12 w-full resize-none overflow-hidden rounded border border-[#161a1938] bg-white px-4 py-3 text-[#161a19] transition-colors focus:border-[#2f6a4a] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#2f6a4a1f] disabled:opacity-50"
+                    className="h-12 w-full resize-none overflow-hidden rounded border-0 bg-transparent px-3 py-3 text-[15px] leading-6 text-[#161a19] placeholder:text-[#95a09a] transition-colors focus:outline-none disabled:opacity-50"
                     rows={1}
                   />
                 </div>
@@ -1057,9 +1087,12 @@ export default function ConsultPage() {
                   type="button"
                   onClick={handleSendMessage}
                   disabled={!inputMessage.trim() || isAgentResponding || !sessionId}
-                  className="rounded bg-[#161a19] px-5 py-2 font-semibold text-white transition hover:bg-[#213026] disabled:cursor-not-allowed disabled:bg-[#d7dcd9] disabled:text-[#626b66]"
+                  className="grid h-11 w-16 shrink-0 place-items-center rounded bg-[#161a19] text-sm font-semibold text-white transition hover:bg-[#213026] disabled:cursor-not-allowed disabled:bg-[#d7dcd9] disabled:text-[#626b66]"
+                  aria-label="发送"
                 >
-                  发送
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M5 12h14m-5-5 5 5-5 5" />
+                  </svg>
                 </button>
               </div>
             </div>
@@ -1074,19 +1107,21 @@ export default function ConsultPage() {
           word-wrap: break-word;
           margin: 0.75rem 0;
           padding: 0.75rem 1rem;
-          border-radius: 0.5rem;
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
+          border-radius: 4px;
+          background: #f7f8f8;
+          border: 1px solid #e2e7e4;
           font-size: 0.8125rem;
         }
         .consult-agent-md blockquote {
           margin: 0.75rem 0;
-          padding-left: 0.875rem;
-          border-left: 3px solid #cbd5e1;
-          color: #475569;
+          padding: 0.75rem 1rem;
+          border: 1px solid #bfe8e2;
+          border-left: 3px solid #2f6a4a;
+          background: #fbfffe;
+          color: #303634;
         }
         .consult-agent-md a {
-          color: #2563eb;
+          color: #2f6a4a;
           text-decoration: underline;
           text-underline-offset: 2px;
         }

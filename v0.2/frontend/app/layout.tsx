@@ -1,21 +1,9 @@
 import type { Metadata } from 'next'
-import { Inter, Noto_Sans_SC } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 
 /** 避免 layout 被静态化导致只读到 build 时的环境变量 */
 export const dynamic = 'force-dynamic'
-
-const inter = Inter({ 
-  subsets: ['latin'],
-  variable: '--font-inter',
-})
-
-const notoSansSc = Noto_Sans_SC({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-noto-sc',
-})
 
 export const metadata: Metadata = {
   title: 'QuestionOS - 智能问题校准系统',
@@ -50,7 +38,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: browserApiBaseScript() }} />
         <script dangerouslySetInnerHTML={{ __html: browserGoogleClientIdScript() }} />
       </head>
-      <body className={`${inter.variable} ${notoSansSc.variable} antialiased font-sans`}>
+      <body className="antialiased font-sans">
         <Providers>
           <div className="min-h-screen">
             {children}
