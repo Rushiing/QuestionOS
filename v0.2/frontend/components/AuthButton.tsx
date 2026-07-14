@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
+import { beginNavigation } from '../lib/navigation-feedback';
 
 export { useAuth } from './AuthProvider';
 
@@ -20,7 +21,10 @@ export function AuthButton() {
   if (!user) {
     return (
       <button
-        onClick={() => router.push('/login')}
+        onClick={() => {
+          beginNavigation();
+          router.push('/login');
+        }}
         className="rounded-lg bg-[#2f6a4a] px-4 py-2 text-sm text-white shadow-sm shadow-[#2f6a4a33] transition-colors hover:bg-[#244f39]"
       >
         登录
@@ -61,6 +65,7 @@ export function AuthButton() {
             <button
               onClick={() => {
                 setShowMenu(false);
+                beginNavigation();
                 router.push('/history');
               }}
               className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"

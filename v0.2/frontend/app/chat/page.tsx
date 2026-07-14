@@ -11,6 +11,7 @@ import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/
 import { CHAT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
 import { handleEnterToSubmit, resizeComposer } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
+import { beginNavigation } from '../../lib/navigation-feedback';
 
 /**
  * React 18 Strict Mode 下 /chat 会挂载两次：第一次 useLayoutEffect 消费掉站内导航标记后，
@@ -1016,6 +1017,7 @@ function ChatPageContent() {
   };
 
   const handleNewChat = () => {
+    beginNavigation();
     router.push('/');
   };
 
@@ -1036,7 +1038,10 @@ function ChatPageContent() {
             </button>
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => {
+                beginNavigation();
+                router.push('/');
+              }}
               className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white transition-opacity hover:opacity-85"
               aria-label="返回首页"
               title="返回首页"
@@ -1063,7 +1068,10 @@ function ChatPageContent() {
             {user && (
               <button
                 type="button"
-                onClick={() => router.push('/history')}
+                onClick={() => {
+                  beginNavigation();
+                  router.push('/history');
+                }}
                 className="inline-flex items-center gap-1.5 rounded border border-[#e2e7e4] bg-white px-3 py-1.5 text-sm text-[#161a19] transition-colors hover:border-[#161a19] hover:bg-[#f3f5f4]"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -6,6 +6,7 @@ import { AuthButton, useAuth } from '../AuthButton';
 import { markInternalChatNav } from '../../lib/chat-nav';
 import { extractBackgroundDocument } from '../../lib/background-extract';
 import { setBackgroundContext, truncateBackgroundText } from '../../lib/background-context';
+import { beginNavigation } from '../../lib/navigation-feedback';
 
 type LandingMode = 'calibrate' | 'consult';
 
@@ -123,6 +124,7 @@ export default function HomePage() {
     sessionStorage.setItem('qosPendingQuestion', question);
 
     if (!user) {
+      beginNavigation();
       router.push('/login');
       return;
     }
@@ -132,9 +134,11 @@ export default function HomePage() {
     if (selectedMode === 'calibrate') {
       sessionStorage.setItem('initialQuestion', question);
       markInternalChatNav();
+      beginNavigation();
       router.push('/chat');
     } else {
       sessionStorage.setItem('consultQuestion', question);
+      beginNavigation();
       router.push('/consult');
     }
   }, [selectedMode, experienceQuestion, user, persistBackground, router]);
@@ -210,7 +214,10 @@ export default function HomePage() {
             {user && (
               <button
                 type="button"
-                onClick={() => router.push('/history')}
+                onClick={() => {
+                  beginNavigation();
+                  router.push('/history');
+                }}
                 className="hidden rounded border border-[#c3cbc6] bg-white px-4 py-2 text-sm font-medium text-[#161a19] transition-colors hover:border-[#161a19] hover:bg-[#f0f2f1] sm:inline-flex"
               >
                 历史

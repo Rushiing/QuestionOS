@@ -12,6 +12,7 @@ import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/
 import { handleEnterToSubmit, resizeComposer } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 import { SANDBOX_TURN_MAX_WAIT_MS } from '../../lib/runtime-config';
+import { beginNavigation } from '../../lib/navigation-feedback';
 
 interface Agent {
   id: string;
@@ -626,6 +627,7 @@ export default function ConsultPage() {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('consultQuestion', question);
       }
+      beginNavigation();
       router.push('/login');
       return;
     }
@@ -699,7 +701,10 @@ export default function ConsultPage() {
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => {
+                beginNavigation();
+                router.push('/');
+              }}
               className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded border border-[#e2e7e4] bg-white transition-colors hover:border-[#161a19] hover:bg-[#f3f5f4]"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -708,7 +713,10 @@ export default function ConsultPage() {
             </button>
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => {
+                beginNavigation();
+                router.push('/');
+              }}
               className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white transition-opacity hover:opacity-85"
               aria-label="返回首页"
               title="返回首页"
@@ -758,7 +766,10 @@ export default function ConsultPage() {
                   <p className="mt-3 text-sm leading-6 text-[#626b66]">先回首页写下议题，再选择沙盘模式开始。</p>
                   <button
                     type="button"
-                    onClick={() => router.push('/')}
+                    onClick={() => {
+                      beginNavigation();
+                      router.push('/');
+                    }}
                     className="mt-6 rounded bg-[#161a19] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#213026]"
                   >
                     回首页选择议题

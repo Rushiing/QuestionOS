@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiPath } from '../lib/runtime-config';
 import { useAuth } from './AuthProvider';
 import { markInternalChatNav } from '../lib/chat-nav';
+import { beginNavigation } from '../lib/navigation-feedback';
 
 function resolveGoogleClientId(): string {
   if (typeof window !== 'undefined' && window.__QOS_GOOGLE_CLIENT_ID__) {
@@ -73,6 +74,7 @@ export function GoogleLoginButton() {
       const pendingQuestion = sessionStorage.getItem('qosPendingQuestion');
       sessionStorage.removeItem('qosPendingLandingMode');
       sessionStorage.removeItem('qosPendingQuestion');
+      beginNavigation();
       if (pendingMode === 'calibrate' && pendingQuestion?.trim()) {
         sessionStorage.setItem('initialQuestion', pendingQuestion.trim());
         markInternalChatNav();

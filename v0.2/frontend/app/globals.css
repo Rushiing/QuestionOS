@@ -257,3 +257,16 @@ input, textarea {
   margin-top: 0.75rem;
   margin-bottom: 1rem;
 }
+@keyframes qos-route-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(410%); }
+}
+
+.qos-route-progress {
+  animation: qos-route-progress 1s ease-in-out infinite;
+}
+
+html[data-route-pending],
+html[data-route-pending] body {
+  cursor: progress;
+}

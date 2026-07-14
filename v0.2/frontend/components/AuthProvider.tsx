@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiPath, SANDBOX_FALLBACK_TOKEN } from '../lib/runtime-config';
+import { beginNavigation } from '../lib/navigation-feedback';
 
 export interface AuthUser {
   id: string;
@@ -155,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    beginNavigation();
     const token = localStorage.getItem('token');
     if (token) {
       try {

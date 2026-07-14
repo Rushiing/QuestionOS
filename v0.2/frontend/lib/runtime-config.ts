@@ -13,7 +13,7 @@ function apiBaseNormalized(): string {
   return API_BASE_URL.replace(/\/$/, '');
 }
 
-/** RootLayout 注入的 window.__QOS_API_BASE__（服务端读 INTERNAL_API_URL / NEXT_PUBLIC_API_URL，与 build 内联无关） */
+/** /runtime-config.js 在启动时注入的浏览器 API 基址，与 build 内联无关。 */
 function browserRuntimeApiBase(): string {
   if (typeof window === 'undefined') return '';
   const s = String(window.__QOS_API_BASE__ ?? '')
