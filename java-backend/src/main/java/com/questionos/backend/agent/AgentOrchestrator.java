@@ -3,7 +3,6 @@ package com.questionos.backend.agent;
 import com.questionos.backend.domain.ConversationMessage;
 import com.questionos.backend.domain.MessageRole;
 import com.questionos.backend.domain.SessionMode;
-import com.questionos.backend.integrations.AgentRegistryService;
 import com.questionos.backend.integrations.OpenClawInvokeService;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -24,18 +23,15 @@ public class AgentOrchestrator {
     private static final int SANDBOX_CORE_TOPIC_MAX_CHARS = 1200;
 
     private final MainCalibrateAgent mainAgent;
-    private final AgentRegistryService registryService;
     private final OpenClawInvokeService invokeService;
     private final AdaptiveDepthGate adaptiveDepthGate;
 
     public AgentOrchestrator(
             MainCalibrateAgent mainAgent,
-            AgentRegistryService registryService,
             OpenClawInvokeService invokeService,
             AdaptiveDepthGate adaptiveDepthGate
     ) {
         this.mainAgent = mainAgent;
-        this.registryService = registryService;
         this.invokeService = invokeService;
         this.adaptiveDepthGate = adaptiveDepthGate;
     }
@@ -63,45 +59,14 @@ public class AgentOrchestrator {
             int sandboxRoundIndex,
             String sandboxDeliberationSceneRaw
     ) {
-        Optional<AgentRegistryService.RegisteredAgent> reg = registryService.firstAvailableAgent();
-        boolean hasThirdPartyAgents = reg.isPresent();
         SandboxDeliberationScene scene = SandboxDeliberationScene.parseStored(sandboxDeliberationSceneRaw);
         List<SandboxAgoraTurnPlan.BuiltinTurn> plan = SandboxAgoraTurnPlan.fourBuiltin(scene);
 
-        record Step(boolean thirdParty, int builtinIdx) {}
-        List<Step> steps = new ArrayList<>();
-        if (hasThirdPartyAgents) {
-            steps.add(new Step(true, -1));
-            steps.add(new Step(false, 0));
-            steps.add(new Step(true, -1));
-            steps.add(new Step(false, 1));
-            steps.add(new Step(false, 2));
-            steps.add(new Step(false, 3));
-        } else {
-            steps.add(new Step(false, 0));
-            steps.add(new Step(false, 1));
-            steps.add(new Step(false, 2));
-            steps.add(new Step(false, 3));
-        }
-        int cycleLen = steps.size();
-        Step current = steps.get(Math.floorMod(sandboxRoundIndex, cycleLen));
+        int cycleLen = plan.size();
+        SandboxAgoraTurnPlan.BuiltinTurn b = plan.get(Math.floorMod(sandboxRoundIndex, cycleLen));
         String latestUser = latestUserMessage(history);
         List<ConversationMessage> prior = priorHistory(history);
 
-        if (current.thirdParty()) {
-            AgentRegistryService.RegisteredAgent agent = reg.get();
-            String aid = agent.agentId();
-            String phaseBlock = deliberationPhaseBlock(SandboxSlot.THIRD_PARTY, sandboxRoundIndex, cycleLen, prior);
-            return oneSpeakerWithAgent(
-                    aid,
-                    aid,
-                    null,
-                    buildThirdPartyUserMessage(prior, latestUser, scene, phaseBlock),
-                    agent,
-                    aid + " 发言结束。"
-            );
-        }
-        SandboxAgoraTurnPlan.BuiltinTurn b = plan.get(current.builtinIdx());
         String phaseBlock = deliberationPhaseBlock(b.slot(), sandboxRoundIndex, cycleLen, prior);
         String speakerId = speakerIdForSlot(b.slot());
         String sys = augmentBuiltinSystemPrompt(b);
@@ -111,41 +76,23 @@ public class AgentOrchestrator {
             // 收束时机三选一满足即终局：共识门 HIGH / 已进入第二圈（lap>=1）/ 用户明确要求收束；
             // 否则只出中场小结，把审议引向第二圈交叉审查（修复"第一圈刚完就甩终局报告"的仓促感）。
             List<String> lapAnalyses = lapAnalysesForGate(prior);
-            boolean withThirdParty = hasThirdPartyAgents;
-            AgentRegistryService.RegisteredAgent thirdParty = withThirdParty ? reg.get() : null;
             int lap = sandboxRoundIndex >= 0 && cycleLen > 0 ? sandboxRoundIndex / cycleLen : 0;
             boolean userWantsClose = userRequestedCloseout(latestUser);
             if (lapAnalyses.isEmpty()) {
                 String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, null);
-                return withThirdParty
-                        ? oneSpeakerWithAgent(speakerId, b.displayName(), sys, userMsg, thirdParty, done)
-                        : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
+                return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
             }
             return adaptiveDepthGate.assessAsync(lapAnalyses)
                     .flatMapMany(assessment -> {
                         boolean closeOut = userWantsClose || lap >= 1 || assessment.isHighConsensus();
                         if (closeOut) {
                             String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, assessment);
-                            return withThirdParty
-                                    ? oneSpeakerWithAgent(speakerId, b.displayName(), sys, userMsg, thirdParty, done)
-                                    : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
+                            return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
                         }
                         String interimSys = b.personaPrefix().trim() + "\n\n" + SandboxBuiltInPrompts.INTERIM_SYNTHESIS;
                         String interimMsg = buildInterimUserMessage(prior, latestUser, scene, assessment);
-                        return withThirdParty
-                                ? oneSpeakerWithAgent(speakerId, b.displayName(), interimSys, interimMsg, thirdParty, done)
-                                : oneSpeakerWithDefaultLlm(speakerId, b.displayName(), interimSys, interimMsg, done);
+                        return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), interimSys, interimMsg, done);
                     });
-        }
-        if (hasThirdPartyAgents) {
-            return oneSpeakerWithAgent(
-                    speakerId,
-                    b.displayName(),
-                    sys,
-                    buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                    reg.get(),
-                    done
-            );
         }
         return oneSpeakerWithDefaultLlm(
                 speakerId,
@@ -229,28 +176,6 @@ public class AgentOrchestrator {
         return false;
     }
 
-    private Flux<AgentReplyChunk> oneSpeakerWithAgent(
-            String speakerId,
-            String displayName,
-            String systemPrompt,
-            String userMessage,
-            AgentRegistryService.RegisteredAgent agent,
-            String doneLine
-    ) {
-        return Flux.just(new AgentReplyChunk("agent_start", speakerId + "|" + displayName))
-                .concatWith(
-                        // 不设外层短超时：OpenClawInvokeService 已按 questionos.llm.timeoutSeconds 约束整段调用
-                        invokeService.invokeOpenClaw(agent, systemPrompt, userMessage)
-                                .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
-                                .onErrorResume(e -> Flux.just(
-                                        new AgentReplyChunk("agent_error", "调用失败: " + e.getMessage()),
-                                        new AgentReplyChunk("agent_chunk", fallbackLine(speakerId))
-                                ))
-                )
-                .concatWithValues(new AgentReplyChunk("agent_done", doneLine))
-                .delayElements(Duration.ofMillis(80));
-    }
-
     private Flux<AgentReplyChunk> oneSpeakerWithDefaultLlm(
             String speakerId,
             String displayName,
@@ -302,8 +227,7 @@ public class AgentOrchestrator {
                     SandboxAgoraTurnPlan.displayNameForSpeaker(scene, id);
             case "sandbox-route" -> "审议路由";
             case "sandbox-classify" -> "议题分诊";
-            case "third-party-adapter" -> "外聘 Agent";
-            default -> registryService.find(id).map(AgentRegistryService.RegisteredAgent::agentId).orElse(id);
+            default -> id;
         };
     }
 
@@ -548,7 +472,7 @@ public class AgentOrchestrator {
     }
 
     /**
-     * 内置/外聘共用：审议场景加权 + 阶段说明 +「核心议题 + 本轮用户话 + 已发言观点」，再由各角色指令收尾。
+     * 内置四席共用：审议场景加权 + 阶段说明 +「核心议题 + 本轮用户话 + 已发言观点」，再由各角色指令收尾。
      */
     private String formatSandboxContextBlock(
             List<ConversationMessage> prior,
@@ -716,32 +640,20 @@ public class AgentOrchestrator {
                 + "不允许给出对任何人都成立的通用建议。输出你的决策沙盘报告。\n";
     }
 
-    private String buildThirdPartyUserMessage(
-            List<ConversationMessage> prior,
-            String latestUser,
-            SandboxDeliberationScene scene,
-            String phaseBlock
-    ) {
-        return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
-                + "\n---\n请结合以上语境（尤其用户核心议题），从你的能力出发补充、质疑或给出一记「外视角」追问；"
-                + "遵守上文「本轮审议阶段」对独立分析/交叉审查的约束。\n";
-    }
-
     public Map<String, Object> capabilities() {
         return Map.of(
                 "firstParty", Map.of("agentId", mainAgent.agentId(), "mode", "calibration"),
                 "sandbox", Map.of(
                         "mode", "sandbox",
                         "turnTaking", true,
-                        "builtIn", List.of("auditor", "risk_officer", "value_judge", "integrator"),
-                        "thirdPartySlot", "2-of-6-rotation"
+                        "builtIn", List.of("auditor", "risk_officer", "value_judge", "integrator")
                 )
         );
     }
 
     public Optional<String> resolveRouteHint(String mode) {
         if ("SANDBOX".equalsIgnoreCase(mode)) {
-            return Optional.of("third-party");
+            return Optional.of("sandbox");
         }
         return Optional.of("first-party");
     }

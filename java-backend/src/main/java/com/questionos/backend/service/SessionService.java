@@ -12,7 +12,6 @@ import com.questionos.backend.agent.SandboxDeliberationScene;
 import com.questionos.backend.agent.MainCalibrateAgent;
 import com.questionos.backend.agent.SandboxProblemDissolutionCard;
 import com.questionos.backend.agent.SandboxSceneClassifier;
-import com.questionos.backend.integrations.AgentRegistryService;
 import com.questionos.backend.domain.ConversationMessage;
 import com.questionos.backend.domain.ConversationSession;
 import com.questionos.backend.domain.MessageRole;
@@ -53,7 +52,6 @@ public class SessionService {
     private final SessionSnapshotPersistence sessionPersistence;
     private final SandboxSceneClassifier sandboxSceneClassifier;
     private final MainCalibrateAgent mainCalibrateAgent;
-    private final AgentRegistryService agentRegistryService;
     private final ProblemDissolutionChecker dissolutionChecker;
 
     @Value("${questionos.session.titleFromLlm:false}")
@@ -73,7 +71,6 @@ public class SessionService {
             SessionSnapshotPersistence sessionPersistence,
             SandboxSceneClassifier sandboxSceneClassifier,
             MainCalibrateAgent mainCalibrateAgent,
-            AgentRegistryService agentRegistryService,
             ProblemDissolutionChecker dissolutionChecker
     ) {
         this.orchestrator = orchestrator;
@@ -82,7 +79,6 @@ public class SessionService {
         this.sessionPersistence = sessionPersistence;
         this.sandboxSceneClassifier = sandboxSceneClassifier;
         this.mainCalibrateAgent = mainCalibrateAgent;
-        this.agentRegistryService = agentRegistryService;
         this.dissolutionChecker = dissolutionChecker;
     }
 
@@ -396,8 +392,7 @@ public class SessionService {
                 return Optional.of(userMessage.messageId());
             }
 
-            boolean thirdParty = agentRegistryService.firstAvailableAgent().isPresent();
-            String routeMd = SandboxAgoraRouteCard.markdown(sc, thirdParty);
+            String routeMd = SandboxAgoraRouteCard.markdown(sc);
             appendMessage(session, MessageRole.AGENT, routeMd, turnId, "sandbox-route");
             publishEvent(sessionId, turnId, "sandbox_route", jsonPayloadForChunkContent(routeMd));
             persistSnapshot(sessionId);

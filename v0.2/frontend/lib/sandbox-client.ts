@@ -24,6 +24,12 @@ export interface SandboxSessionMessage {
   agentSpeakerId?: string | null;
 }
 
+export interface SendMessageResult {
+  messageId: string;
+  status: string;
+  idempotencyKey?: string | null;
+}
+
 export interface AgentInstance {
   agentId: string;
   provider: string;
@@ -94,8 +100,8 @@ export const sandboxClient = {
     return data.sessionId;
   },
 
-  sendMessage: async (sessionId: string, content: string, idempotencyKey: string): Promise<void> => {
-    await fetchJson(apiPath(`/api/v1/sandbox/sessions/${sessionId}/messages`), {
+  sendMessage: async (sessionId: string, content: string, idempotencyKey: string): Promise<SendMessageResult> => {
+    return fetchJson<SendMessageResult>(apiPath(`/api/v1/sandbox/sessions/${sessionId}/messages`), {
       method: 'POST',
       headers: {
         ...buildSandboxHeaders(),

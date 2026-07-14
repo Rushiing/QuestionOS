@@ -20,8 +20,8 @@ Authorization: Bearer sk-sandbox-dev
 - 多 session / 多轮对话
 - SSE 流式输出，支持 `Last-Event-ID` 续传
 - `Idempotency-Key` 幂等消息提交
-- 多 Agent 编排（内置主 Agent + 三方适配 Agent）
-- 三方 Agent 接口：注册、能力发现、调用
+- 多 Agent 编排（思维校准主 Agent + 沙盘内置四席）
+- 沙盘首轮分诊、审议路由与内置多角色轮转
 - 基础治理：鉴权、限流、请求链路 ID、审计、Prometheus 指标
 
 ## 快速联调

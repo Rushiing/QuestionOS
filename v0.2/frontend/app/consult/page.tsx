@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AuthButton, useAuth } from '../../components/AuthButton';
-import { AgentInstance, OnboardingJobStatus, sandboxClient } from '../../lib/sandbox-client';
+import { sandboxClient, type SandboxSessionMessage } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 import { handleEnterToSubmit } from '../../lib/keyboard-ime';
@@ -42,6 +42,37 @@ interface Message {
   content: string;
   is_streaming?: boolean;
 }
+
+const isSandboxUiMessage = (m: SandboxSessionMessage) =>
+  m.agentSpeakerId === 'sandbox-route' || m.agentSpeakerId === 'sandbox-classify';
+
+const isPersistedAgentReply = (m: SandboxSessionMessage) =>
+  String(m.role || '').toUpperCase() === 'AGENT' && !!m.content?.trim() && !isSandboxUiMessage(m);
+
+const resolveTurnIdFromMessages = (
+  msgList: SandboxSessionMessage[],
+  sentMessageId?: string,
+  userText?: string
+): number | undefined => {
+  if (sentMessageId) {
+    const byId = msgList.find((m) => m.messageId === sentMessageId);
+    if (typeof byId?.turnId === 'number') return byId.turnId;
+  }
+  const normalized = userText?.trim();
+  if (normalized) {
+    const byContent = [...msgList]
+      .reverse()
+      .find((m) => String(m.role || '').toUpperCase() === 'USER' && m.content?.trim() === normalized);
+    if (typeof byContent?.turnId === 'number') return byContent.turnId;
+  }
+  const latestUser = [...msgList].reverse().find((m) => String(m.role || '').toUpperCase() === 'USER');
+  return typeof latestUser?.turnId === 'number' ? latestUser.turnId : undefined;
+};
+
+const latestAgentForTurn = (msgList: SandboxSessionMessage[], turnId?: number) => {
+  if (typeof turnId !== 'number') return undefined;
+  return [...msgList].reverse().find((m) => isPersistedAgentReply(m) && m.turnId === turnId);
+};
 
 /** 沙盘 Agent 回复：统一标题/分隔线/列表/表格版式（与整合报告等 Markdown 结构配合） */
 const consultAgentMarkdownComponents: Components = {
@@ -152,9 +183,6 @@ function agentMarkdownSource(msg: Message): string {
   return formatCalibrationJsonToMarkdown(raw);
 }
 
-/** 外聘区「🧩 已接入 Agents」预览卡片：先隐藏；loadInstances / 沙盘三方 slot 仍工作 */
-const SHOW_EMBEDDED_CONNECTED_AGENTS_CARD = false;
-
 export default function ConsultPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -166,29 +194,6 @@ export default function ConsultPage() {
   const [pendingAutoStartQuestion, setPendingAutoStartQuestion] = useState<string | null>(null);
   const [isAgentResponding, setIsAgentResponding] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [integrationEntryOpen, setIntegrationEntryOpen] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3>(1);
-  const [openClawAgentId, setOpenClawAgentId] = useState('');
-  const [openClawEndpoint, setOpenClawEndpoint] = useState('http://127.0.0.1:18789');
-  const [openClawApiKey, setOpenClawApiKey] = useState('');
-  const [openClawModel, setOpenClawModel] = useState('custom-dogfooding/pitaya-03-20');
-  const [isCreatingIntegration, setIsCreatingIntegration] = useState(false);
-  const [isTestingIntegration, setIsTestingIntegration] = useState(false);
-  const [integrationHint, setIntegrationHint] = useState('');
-  const [onboardingJobId, setOnboardingJobId] = useState<string | null>(null);
-  const [onboardingJobToken, setOnboardingJobToken] = useState<string | null>(null);
-  const [onboardingInstructionUrl, setOnboardingInstructionUrl] = useState<string | null>(null);
-  const [onboardingJobStatus, setOnboardingJobStatus] = useState<OnboardingJobStatus | null>(null);
-  const [isGeneratingOnboardingPacket, setIsGeneratingOnboardingPacket] = useState(false);
-  const [integrationResult, setIntegrationResult] = useState<{
-    ok: boolean;
-    firstChunkMs?: number;
-    hasDone?: boolean;
-    message?: string;
-  } | null>(null);
-  const [instances, setInstances] = useState<AgentInstance[]>([]);
-  const [loadingInstances, setLoadingInstances] = useState(false);
-  const [puzzleHover, setPuzzleHover] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const lastSeqRef = useRef<number>(0);
@@ -197,37 +202,11 @@ export default function ConsultPage() {
   const slowRoundWarningIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const instanceHoverScrollRef = useRef<HTMLDivElement>(null);
   const isLoggedIn = !!user;
 
   const defaultAgentList: Agent[] = [
     ...SANDBOX_DELIBERATION_ROOMS,
-    { id: 'third-party-adapter', name: '外聘 Agent', avatar: '🧩', description: 'OpenClaw 等外部 Agent', role: 'third-party' },
   ];
-
-  const thirdPartyIdSet = useMemo(
-    () => new Set(instances.map((i) => i.agentId)),
-    [instances]
-  );
-
-  const sessionThirdPartyDisplay = useMemo(() => {
-    const hit = [...messages].reverse().find(
-      (m) =>
-        m.role === 'agent' &&
-        m.agent_id &&
-        (thirdPartyIdSet.has(m.agent_id) || m.agent_id === 'third-party-adapter')
-    );
-    if (!hit) return null;
-    const n = (hit.agent_name || '').trim();
-    return n || hit.agent_id || null;
-  }, [messages, thirdPartyIdSet]);
-
-  /** 外聘区主文案：无实例 → 兜底；本会话已有外聘发言 → 显示该 agent；否则显示当前注册列表首选（最新） */
-  const puzzlePrimaryLabel = useMemo(() => {
-    if (instances.length === 0) return '已接入 Agents';
-    if (sessionStarted && sessionThirdPartyDisplay) return sessionThirdPartyDisplay;
-    return instances[0].agentId;
-  }, [instances, sessionStarted, sessionThirdPartyDisplay]);
 
   const agentMeta = (agentId: string) => {
     if (agentId === 'auditor') {
@@ -242,16 +221,8 @@ export default function ConsultPage() {
     if (agentId === 'integrator') {
       return { name: '综合席', avatar: '🛡️' };
     }
-    if (agentId === 'third-party-adapter') {
-      const inst = instances[0];
-      return { name: inst?.agentId ?? '已接入 Agents', avatar: '🧩' };
-    }
-    const inst = instances.find((i) => i.agentId === agentId);
-    if (inst) {
-      return { name: inst.agentId, avatar: '🧩' };
-    }
     if (agentId && !['main-calibrate', 'auditor', 'risk_officer', 'value_judge', 'integrator'].includes(agentId)) {
-      return { name: agentId, avatar: '🧩' };
+      return { name: agentId, avatar: '🧠' };
     }
     return { name: '主校准 Agent', avatar: '🧠' };
   };
@@ -283,239 +254,11 @@ export default function ConsultPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const loadInstances = async () => {
-    setLoadingInstances(true);
-    try {
-      const list = await sandboxClient.listInstances();
-      setInstances(list);
-    } catch {
-      setInstances([]);
-    } finally {
-      setLoadingInstances(false);
-    }
-  };
-
-  useEffect(() => {
-    loadInstances();
-  }, []);
-
-  useEffect(() => {
-    if (integrationEntryOpen) {
-      loadInstances();
-    }
-  }, [integrationEntryOpen]);
-
-  useEffect(() => {
-    if (!onboardingJobId) return;
-    let cancelled = false;
-    const doneStatus = new Set(['VERIFIED', 'FAILED']);
-    const poll = async () => {
-      try {
-        const status = await sandboxClient.getOnboardingJobStatus(onboardingJobId);
-        if (cancelled) return;
-        setOnboardingJobStatus(status);
-        if (status.agentId && status.status !== 'DRAFT' && status.status !== 'SUBMITTED') {
-          setOpenClawAgentId(status.agentId);
-        }
-        if (doneStatus.has(status.status)) {
-          setOnboardingStep(status.status === 'VERIFIED' ? 3 : 2);
-          await loadInstances();
-          return;
-        }
-      } catch {
-        // ignore transient polling errors
-      }
-      if (!cancelled) {
-        setTimeout(poll, 2500);
-      }
-    };
-    poll();
-    return () => {
-      cancelled = true;
-    };
-  }, [onboardingJobId]);
-
-  useEffect(() => {
-    if (!puzzleHover || !instanceHoverScrollRef.current || instances.length < 2) return;
-    const el = instanceHoverScrollRef.current;
-    if (el.scrollHeight <= el.clientHeight + 2) return;
-    let raf = 0;
-    const tick = () => {
-      el.scrollTop += 0.45;
-      if (el.scrollTop >= el.scrollHeight - el.clientHeight - 1) {
-        el.scrollTop = 0;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [puzzleHover, instances]);
-
-  const openClawConfigText = [
-    '# OpenClaw 原生接入配置（无需改 OpenClaw）',
-    `AGENT_ID=${openClawAgentId || '<created-agent-id>'}`,
-    'PROVIDER=OpenClaw',
-    `ENDPOINT=${openClawEndpoint}`,
-    'SCOPE=sandbox:invoke',
-    `MODEL=${openClawModel}`,
-    `API_KEY=${openClawApiKey ? '***已设置***' : '<required-for-openclaw>'}`,
-    '',
-    '# OpenClaw 原生 API（QuestionOS 会自动适配）',
-    'HEALTH=GET /health',
-    'INVOKE=POST /v1/chat/completions',
-    '',
-    '# 说明',
-    `QuestionOS Capabilities URL: ${sandboxClient.capabilitiesUrl()}`,
-    'QuestionOS 会在后端把请求转发为 OpenAI 兼容格式。',
-  ].join('\n');
-
-  const buildOneClickMessage = (jobId: string, token: string, instructionUrl: string): string => [
-    '你是 OpenClaw 接入代理。请执行本次 QuestionOS 接入委托：',
-    `- jobId: ${jobId}`,
-    '- 要求：自动填写 agentId/provider/endpoint/apiKey/model，完成注册与联通测试。',
-    '- ⚠️ 重要：如果你的 endpoint 启用了 Bearer 鉴权，**必须**在 submit 时填入 apiKey 字段（即你自己 endpoint 的 API Key），否则 QuestionOS 反向调用你时会 401。',
-    '- 规则：写入密钥前先向我确认一次，不要在公开消息里泄露密钥。',
-    '',
-    '请先读取机器说明（包含 submit endpoint 与 payload schema）：',
-    instructionUrl,
-    '',
-    '提交时使用 submitToken：',
-    token,
-  ].join('\n');
-
-  const normalizeOpenClawEndpoint = (value: string): string => {
-    const trimmed = value.trim().replace(/\/+$/, '');
-    if (trimmed.endsWith('/v1/chat/completions')) {
-      return trimmed.replace(/\/v1\/chat\/completions$/, '');
-    }
-    return trimmed;
-  };
-
-  const createOpenClawIntegration = async () => {
-    if (!isLoggedIn) {
-      setIntegrationHint('请先登录后继续三方接入。');
-      return;
-    }
-    const nextId = openClawAgentId || `openclaw-${Date.now().toString().slice(-6)}`;
-    const endpoint = normalizeOpenClawEndpoint(openClawEndpoint);
-    setIsCreatingIntegration(true);
-    setIntegrationHint('');
-    setIntegrationResult(null);
-    try {
-      if (!endpoint) throw new Error('OpenClaw endpoint 不能为空。');
-      if (!openClawApiKey.trim()) throw new Error('OpenClaw API Key 不能为空。');
-      await sandboxClient.registerAgent({
-        agentId: nextId,
-        provider: 'OpenClaw',
-        endpoint,
-        scope: 'sandbox:invoke',
-        apiKey: openClawApiKey.trim(),
-        model: openClawModel,
-      });
-      setOpenClawEndpoint(endpoint);
-      setOpenClawAgentId(nextId);
-      setIntegrationHint('OpenClaw 原生接入实例创建成功。');
-      await loadInstances();
-      setOnboardingStep(2);
-    } catch (e: unknown) {
-      setIntegrationHint(`创建失败：${e instanceof Error ? e.message : '请检查后端服务与参数。'}`);
-    } finally {
-      setIsCreatingIntegration(false);
-    }
-  };
-
-  const runOpenClawConnectivityTest = async () => {
-    if (!isLoggedIn) {
-      setIntegrationHint('请先登录后继续三方接入。');
-      return;
-    }
-    setIsTestingIntegration(true);
-    setIntegrationResult(null);
-    const startedAt = Date.now();
-    try {
-      let latestInstances = await sandboxClient.listInstances();
-      if (!latestInstances.length) {
-        const autoAgentId = openClawAgentId || `openclaw-auto-${Date.now().toString().slice(-6)}`;
-        const endpoint = normalizeOpenClawEndpoint(openClawEndpoint);
-        if (!endpoint) throw new Error('OpenClaw endpoint 不能为空。');
-        if (!openClawApiKey.trim()) throw new Error('OpenClaw API Key 不能为空。');
-        await sandboxClient.registerAgent({
-          agentId: autoAgentId,
-          provider: 'OpenClaw',
-          endpoint,
-          scope: 'sandbox:invoke',
-          apiKey: openClawApiKey.trim(),
-          model: openClawModel,
-        });
-        setOpenClawEndpoint(endpoint);
-        setOpenClawAgentId(autoAgentId);
-        latestInstances = await sandboxClient.listInstances();
-      }
-      setInstances(latestInstances);
-      const preferred = latestInstances.find((it) => it.agentId === openClawAgentId);
-      const targetAgentId = preferred?.agentId || latestInstances[0]?.agentId;
-      if (!targetAgentId) {
-        throw new Error('未找到可测试实例，请先创建或重新创建 OpenClaw 实例。');
-      }
-      const timeoutTask = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('connectivity test timeout')), 12000),
-      );
-      const invokeTask = sandboxClient.invokeAgent(targetAgentId, '请回复：联通成功');
-      const result = await Promise.race([invokeTask, timeoutTask]);
-      const firstChunkMs = Date.now() - startedAt;
-      const output = result?.output || '';
-      const outputPreview = output.length > 120 ? `${output.slice(0, 120)}...` : output;
-      setIntegrationResult({
-        ok: true,
-        firstChunkMs,
-        hasDone: true,
-        message: outputPreview
-          ? `联通成功：${outputPreview}`
-          : '联通成功：已收到 OpenClaw 返回。',
-      });
-      setOnboardingStep(3);
-    } catch (e) {
-      const detail = e instanceof Error ? e.message : '未知错误';
-      setIntegrationResult({
-        ok: false,
-        message: detail.includes('HTTP 404')
-          ? '联通失败：实例不存在（HTTP 404）。请先点击“创建接入实例”后再测试。'
-          : `联通失败：${detail}`,
-      });
-    } finally {
-      setIsTestingIntegration(false);
-    }
-  };
-
-  const generateOneClickOnboarding = async () => {
-    if (!isLoggedIn) {
-      setIntegrationHint('请先登录后继续三方接入。');
-      return;
-    }
-    setIsGeneratingOnboardingPacket(true);
-    setIntegrationHint('');
-    try {
-      const job = await sandboxClient.createOnboardingJob();
-      setOnboardingJobId(job.jobId);
-      setOnboardingJobToken(job.submitToken);
-      setOnboardingInstructionUrl(job.instructionUrl);
-      setOnboardingJobStatus(null);
-      const text = buildOneClickMessage(job.jobId, job.submitToken, job.instructionUrl);
-      await navigator.clipboard.writeText(text);
-      setIntegrationHint('已复制「接入委托单」到剪贴板，发给 OpenClaw Agent 后将自动回填并联通。');
-      setOnboardingStep(2);
-    } catch (e: unknown) {
-      setIntegrationHint(`生成失败：${e instanceof Error ? e.message : '请稍后重试。'}`);
-    } finally {
-      setIsGeneratingOnboardingPacket(false);
-    }
-  };
-
   const createSession = async (question: string): Promise<string> => {
     return sandboxClient.createSession('SANDBOX', question);
   };
 
-  const streamTurnEvents = async (sid: string) => {
+  const streamTurnEvents = async (sid: string, currentTurnId?: number) => {
     let isDone = false;
     let activeAgentMsgId: string | null = null;
     // 本轮渲染审计：turn_done 到了但正文一个字都没渲染上，说明解析/渲染层出了意外，需要回填保险
@@ -637,7 +380,7 @@ export default function ConsultPage() {
         } else if (eventType === 'agent_error') {
           hasStreamActivityRef.current = true;
           if (!activeAgentMsgId) {
-            ensureAgentMessage(instances[0]?.agentId ?? 'third-party-adapter');
+            ensureAgentMessage('main-calibrate');
           }
           setMessages(prev => prev.map(m =>
             m.id === activeAgentMsgId
@@ -681,13 +424,7 @@ export default function ConsultPage() {
       console.warn('[consult] turn completed but no content rendered; self-healing from listMessages');
       try {
         const msgList = await sandboxClient.listMessages(sid);
-        const latestAgent = [...(msgList || [])].reverse().find(
-          (m) =>
-            String(m.role || '').toUpperCase() === 'AGENT' &&
-            m.content?.trim() &&
-            m.agentSpeakerId !== 'sandbox-route' &&
-            m.agentSpeakerId !== 'sandbox-classify',
-        );
+        const latestAgent = latestAgentForTurn(msgList || [], currentTurnId);
         if (latestAgent) {
           const fillId = lastBubbleId;
           if (fillId) {
@@ -724,6 +461,8 @@ export default function ConsultPage() {
     slowRoundWarningIdRef.current = null;
     setDebugLogs((prev) => [...prev, `--- turn start ${new Date().toLocaleTimeString('zh-CN')} ---`]);
     let timedOut = false;
+    let sentMessageId: string | undefined;
+    let currentTurnId: number | undefined;
     const timeout = setTimeout(() => {
       timedOut = true;
       setIsAgentResponding(false);
@@ -744,13 +483,8 @@ export default function ConsultPage() {
       (async () => {
         try {
           const msgList = await sandboxClient.listMessages(sid);
-          const latestAgent = [...msgList].reverse().find(
-            (m) =>
-              m.role === 'AGENT' &&
-              m.content?.trim() &&
-              m.agentSpeakerId !== 'sandbox-route' &&
-              m.agentSpeakerId !== 'sandbox-classify',
-          );
+          const scopedTurnId = currentTurnId ?? resolveTurnIdFromMessages(msgList, sentMessageId, userText);
+          const latestAgent = latestAgentForTurn(msgList, scopedTurnId);
           if (latestAgent) {
             const aid = (latestAgent.agentSpeakerId || 'auditor').trim() || 'auditor';
             const { name, avatar } = agentMeta(aid);
@@ -778,9 +512,16 @@ export default function ConsultPage() {
 
     try {
       const idemKey = `idem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await sandboxClient.sendMessage(sid, userText, idemKey);
+      const sendResult = await sandboxClient.sendMessage(sid, userText, idemKey);
+      sentMessageId = sendResult.messageId;
+      try {
+        const msgList = await sandboxClient.listMessages(sid);
+        currentTurnId = resolveTurnIdFromMessages(msgList, sentMessageId, userText);
+      } catch (e) {
+        console.warn('[consult] resolve current turnId failed:', e);
+      }
       if (timedOut) return;
-      await streamTurnEvents(sid);
+      await streamTurnEvents(sid, currentTurnId);
       if (timedOut) return;
     } catch (error) {
       console.error('runTurn failed:', error);
@@ -788,9 +529,8 @@ export default function ConsultPage() {
       let recovered = false;
       try {
         const msgList = await sandboxClient.listMessages(sid);
-        const latestAgent = [...(msgList || [])]
-          .reverse()
-          .find(m => String(m.role || '').toUpperCase() === 'AGENT' && m.content?.trim());
+        const scopedTurnId = currentTurnId ?? resolveTurnIdFromMessages(msgList || [], sentMessageId, userText);
+        const latestAgent = latestAgentForTurn(msgList || [], scopedTurnId);
         if (latestAgent) {
           recovered = true;
           setMessages(prev => {
@@ -889,7 +629,6 @@ export default function ConsultPage() {
     setIsAgentResponding(false);
     setSessionId(null);
     lastSeqRef.current = 0;
-    loadInstances();
   };
 
   return (
