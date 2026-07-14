@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiPath } from '../lib/runtime-config';
 import { useAuth } from './AuthProvider';
+import { markInternalChatNav } from '../lib/chat-nav';
 
 function resolveGoogleClientId(): string {
   if (typeof window !== 'undefined' && window.__QOS_GOOGLE_CLIENT_ID__) {
@@ -68,7 +69,20 @@ export function GoogleLoginButton() {
       }
       localStorage.setItem('token', data.access_token);
       setUserFromLogin(data.user);
-      router.push('/');
+      const pendingMode = sessionStorage.getItem('qosPendingLandingMode');
+      const pendingQuestion = sessionStorage.getItem('qosPendingQuestion');
+      sessionStorage.removeItem('qosPendingLandingMode');
+      sessionStorage.removeItem('qosPendingQuestion');
+      if (pendingMode === 'calibrate' && pendingQuestion?.trim()) {
+        sessionStorage.setItem('initialQuestion', pendingQuestion.trim());
+        markInternalChatNav();
+        router.push('/chat');
+      } else if (pendingMode === 'consult' && pendingQuestion?.trim()) {
+        sessionStorage.setItem('consultQuestion', pendingQuestion.trim());
+        router.push('/consult');
+      } else {
+        router.push('/');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Google 登录失败';
       console.error('Google login error:', err);

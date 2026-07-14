@@ -7,35 +7,68 @@ import { markInternalChatNav } from '../../lib/chat-nav';
 import { extractBackgroundDocument } from '../../lib/background-extract';
 import { setBackgroundContext, truncateBackgroundText } from '../../lib/background-context';
 
-const SCENARIO_GROUPS: { icon: string; title: string; items: string[] }[] = [
+type LandingMode = 'calibrate' | 'consult';
+
+const MODE_COPY: Record<
+  LandingMode,
   {
-    icon: '💼',
-    title: '职场决策',
+    name: string;
+    signal: string;
+    badge: string;
+    description: string;
+    fit: string;
+    placeholder: string;
+    cta: string;
+    preview: string[];
+  }
+> = {
+  calibrate: {
+    name: '思维校准',
+    signal: '不确定自己真正想问什么',
+    badge: '单 Agent 多轮对话',
+    description: '适合理清问题。系统不会急着给建议，而是连续追问，帮你把模糊、摇摆、说不清的判断一步步想清楚。',
+    fit: '适合：个人纠结、职业选择、关系判断、自我怀疑、目标不清。',
+    placeholder: '写下一个你想理清、但现在还说不准的问题...',
+    cta: '进入思维校准',
+    preview: [
+      '第 1 轮：先抓住你话里最模糊的变量。',
+      '第 2 轮：继续追问一个更深的判断依据。',
+      '多轮之后：问题变清楚，再收束下一步行动。',
+    ],
+  },
+  consult: {
+    name: '沙盘推演',
+    signal: '已经有方案、角色或代价在互相拉扯',
+    badge: '多 Agent 模拟辩论',
+    description: '适合方案论证。多个角色会围绕你的议题辩论、质疑和压力测试，帮助你做多维度思考，最后对齐可执行共识。',
+    fit: '适合：方案取舍、团队协作、商业/技术冲突、资源分配、共识拉齐。',
+    placeholder: '描述一个需要论证、对齐或压力测试的方案情境...',
+    cta: '进入沙盘推演',
+    preview: [
+      '分诊：先判断议题属于哪类审议室。',
+      '辩论：多角色从概念、代价、价值和执行面施压。',
+      '整合：收束为可对齐的共识与下一步验证动作。',
+    ],
+  },
+};
+
+const SCENARIO_GROUPS: { title: string; mode: LandingMode; items: string[] }[] = [
+  {
+    title: '校准模式：问题还没成形',
+    mode: 'calibrate',
     items: [
-      '老板总是临时加需求，怎么优雅地拒绝？',
-      '项目延期了，怎么向客户解释？',
-      '想要升职加薪，但不知道怎么开口？',
-      '团队里有人总是拖延，怎么推进？',
+      '我想离开现在的团队，但又觉得自己可能太敏感。',
+      '我总想做点自己的东西，但每次开始又觉得不现实。',
+      '我不知道自己是想升职，还是只是想证明自己没输。',
     ],
   },
   {
-    icon: '🎯',
-    title: '个人成长',
+    title: '沙盘模式：冲突已经出现',
+    mode: 'consult',
     items: [
-      '我想转行但担心沉没成本，该怎么决策？',
-      '想建立个人品牌，但不知道从哪切入？',
-      '每天都很忙但产出不高，怎么优化时间？',
-      '想提升演讲能力，但一上台就紧张？',
-    ],
-  },
-  {
-    icon: '🚀',
-    title: '团队管理',
-    items: [
-      '团队扩招后文化稀释，怎么保持凝聚力？',
-      '跨部门协作总是扯皮，怎么推进？',
-      '技术选型分歧大，团队达不成共识？',
-      '想提升团队执行力，制度怎么设计？',
+      '两个技术方案分歧很大，短期交付和长期架构怎么取舍？',
+      '留存差但少数用户很爱，下一步该改定位、重做功能，还是继续获客？',
+      '销售要冲季度目标，交付说资源不够，产品要不要挡需求？',
     ],
   },
 ];
@@ -49,78 +82,62 @@ function backgroundFileExt(name: string): string {
 }
 
 const EXTRA_SCENARIOS = [
-  '团队有两个技术方案，如何评估选择？',
-  '最近工作效率很低，总是拖延，怎么办？',
-  '有两个工作机会，一个钱多一个稳定，怎么选？',
-  '想创业但资金有限，该从哪里开始？',
-  '竞品做得比我们好，怎么追赶？',
+  { text: '最近工作效率很低，我真正该砍掉什么？', mode: 'calibrate' as const },
+  { text: '想创业但资金有限，该先验证用户、现金流还是团队能力？', mode: 'consult' as const },
+  { text: '客户预算有限，质量、范围和交付节奏必须重新谈。', mode: 'consult' as const },
+  { text: '我越来越不想参加团队讨论，但又怕自己是在逃避协作。', mode: 'calibrate' as const },
 ];
 
 export default function HomePage() {
   const router = useRouter();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const experienceFormRef = useRef<HTMLDivElement>(null);
+  const questionInputRef = useRef<HTMLTextAreaElement>(null);
   const [backgroundText, setBackgroundText] = useState('');
   const [backgroundFileName, setBackgroundFileName] = useState<string | null>(null);
   const [backgroundBusy, setBackgroundBusy] = useState(false);
   const [backgroundErr, setBackgroundErr] = useState<string | null>(null);
   const [scenariosExpanded, setScenariosExpanded] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<'calibrate' | 'consult' | null>(null);
+  const [selectedMode, setSelectedMode] = useState<LandingMode>('calibrate');
   const [experienceQuestion, setExperienceQuestion] = useState('');
 
   const persistBackground = useCallback(() => {
     setBackgroundContext(backgroundText);
   }, [backgroundText]);
 
-  const scrollToExperience = useCallback(() => {
-    document.getElementById('experience')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
-
-  /** 点选模式后表单挂载，滚到问题输入区（避免仍停在双卡上方） */
-  useEffect(() => {
-    if (!selectedMode) return;
-    const id = requestAnimationFrame(() => {
-      experienceFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const applyScenario = useCallback((mode: LandingMode, prefill: string) => {
+    setSelectedMode(mode);
+    setExperienceQuestion(prefill);
+    requestAnimationFrame(() => {
+      questionInputRef.current?.focus();
+      questionInputRef.current?.setSelectionRange(prefill.length, prefill.length);
     });
-    return () => cancelAnimationFrame(id);
-  }, [selectedMode]);
-
-  const requireUser = useCallback(
-    (fn: () => void) => {
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-      fn();
-    },
-    [user, router]
-  );
-
-  const selectCalibrate = useCallback((prefill?: string) => {
-    setSelectedMode('calibrate');
-    if (prefill !== undefined) setExperienceQuestion(prefill);
-  }, []);
-
-  const selectConsult = useCallback((prefill?: string) => {
-    setSelectedMode('consult');
-    if (prefill !== undefined) setExperienceQuestion(prefill);
   }, []);
 
   const handleExperienceSubmit = useCallback(() => {
-    if (!selectedMode || !experienceQuestion.trim()) return;
-    requireUser(() => {
-      persistBackground();
-      if (selectedMode === 'calibrate') {
-        sessionStorage.setItem('initialQuestion', experienceQuestion.trim());
-        markInternalChatNav();
-        router.push('/chat');
-      } else {
-        sessionStorage.setItem('consultQuestion', experienceQuestion.trim());
-        router.push('/consult');
-      }
-    });
-  }, [selectedMode, experienceQuestion, requireUser, persistBackground, router]);
+    const question = experienceQuestion.trim();
+    if (!question) return;
+
+    persistBackground();
+    sessionStorage.setItem('qosPendingLandingMode', selectedMode);
+    sessionStorage.setItem('qosPendingQuestion', question);
+
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    sessionStorage.removeItem('qosPendingLandingMode');
+    sessionStorage.removeItem('qosPendingQuestion');
+    if (selectedMode === 'calibrate') {
+      sessionStorage.setItem('initialQuestion', question);
+      markInternalChatNav();
+      router.push('/chat');
+    } else {
+      sessionStorage.setItem('consultQuestion', question);
+      router.push('/consult');
+    }
+  }, [selectedMode, experienceQuestion, user, persistBackground, router]);
 
   const clearBackgroundFile = useCallback(() => {
     setBackgroundText('');
@@ -174,181 +191,132 @@ export default function HomePage() {
     }
   };
 
+  const currentMode = MODE_COPY[selectedMode];
+  const modeOrder: LandingMode[] = ['calibrate', 'consult'];
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <nav
-        className="fixed top-0 left-0 right-0 z-[1000] border-b border-gray-200 bg-white/95 backdrop-blur-md"
-        role="navigation"
-        aria-label="主导航"
-      >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[#f7f8f8] text-[#161a19]">
+      <nav className="sticky top-0 z-50 border-b border-[#e2e7e4] bg-[#f7f8f8]/90 backdrop-blur-md" aria-label="主导航">
+        <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between gap-5 px-6">
           <button
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="flex items-center gap-2 text-left"
+            className="flex items-center gap-3 text-left"
             aria-label="QuestionOS 首页"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-teal-400 flex items-center justify-center text-white text-xl font-bold shadow-md shadow-teal-500/25">
-              Q
-            </div>
-            <span className="text-xl font-bold text-gray-900">QuestionOS</span>
+            <span className="grid h-[34px] w-[34px] place-items-center rounded bg-[#161a19] font-serif text-[19px] font-semibold text-white">Q</span>
+            <span className="font-serif text-lg font-semibold tracking-[-0.01em]">QuestionOS</span>
           </button>
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-gray-600 hover:text-gray-900 font-medium text-sm transition-colors">
-              功能
-            </a>
-            <a href="#scenarios" className="text-gray-600 hover:text-gray-900 font-medium text-sm transition-colors">
-              场景
-            </a>
-            <a href="#workflow" className="text-gray-600 hover:text-gray-900 font-medium text-sm transition-colors">
-              使用方法
-            </a>
+          <div className="flex items-center gap-3">
             {user && (
               <button
                 type="button"
                 onClick={() => router.push('/history')}
-                className="text-gray-600 hover:text-gray-900 font-medium text-sm transition-colors"
+                className="hidden rounded border border-[#c3cbc6] bg-white px-4 py-2 text-sm font-medium text-[#161a19] transition-colors hover:border-[#161a19] hover:bg-[#f0f2f1] sm:inline-flex"
               >
                 历史
               </button>
             )}
-          </div>
-          <div className="flex items-center gap-3">
             <AuthButton />
           </div>
         </div>
       </nav>
 
-      {/* 首屏 + 选择模式：占满一屏并在视区内垂直居中，避免贴导航、底部留白失衡 */}
-      <section
-        className="relative min-h-[100svh] flex flex-col justify-center px-6 pt-28 pb-12 sm:pt-32 sm:pb-14 md:pb-16 overflow-hidden bg-gradient-to-b from-white via-white to-gray-50/60"
-        aria-label="首屏介绍与选择模式"
-      >
-        <div
-          className="pointer-events-none absolute w-[min(100vw,28rem)] h-[min(100vw,28rem)] max-w-[450px] max-h-[450px] rounded-full bg-teal-500/[0.06] blur-[60px] -top-16 -right-16"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute w-[min(100vw,24rem)] h-[min(100vw,24rem)] max-w-[380px] max-h-[380px] rounded-full bg-teal-500/[0.05] blur-[50px] bottom-0 -left-12"
-          aria-hidden
-        />
-
-        <div className="relative z-10 max-w-6xl mx-auto w-full">
-          <header className="text-center mb-5 sm:mb-6">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-gray-900 tracking-tight leading-[1.08] mb-2 sm:mb-3">
-              QuestionOS
-            </h1>
-            <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800 mb-2">
-              让问题更清晰，让决策更明智
-            </p>
-            <p className="text-sm sm:text-base text-gray-500 max-w-2xl mx-auto leading-relaxed">
-              将模糊的问题转化为清晰可执行的指令；通过 AI 对话发现思维盲点
-            </p>
-          </header>
-
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-4 sm:mb-5">
-            <button
-              type="button"
-              onClick={scrollToExperience}
-              className="inline-flex items-center justify-center gap-2 rounded-xl px-8 sm:px-10 py-3 sm:py-3.5 text-base sm:text-lg font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-lg shadow-teal-500/25 hover:shadow-xl hover:shadow-teal-500/30 hover:-translate-y-0.5 transition-all"
-            >
-              立即体验
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </button>
-            <a
-              href="#features"
-              className="inline-flex items-center justify-center rounded-xl px-8 sm:px-10 py-3 sm:py-3.5 text-base sm:text-lg font-semibold border-2 border-teal-500 text-teal-600 hover:bg-teal-50 transition-all"
-            >
-              了解更多
-            </a>
-          </div>
-
-          <div
-            id="experience"
-            className="scroll-mt-28 max-w-4xl mx-auto border-t border-gray-100/80 pt-6 sm:pt-7 mt-2"
-            aria-labelledby="experience-heading"
-          >
-            <header className="text-center mb-5 sm:mb-6">
-              <h2 id="experience-heading" className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1.5">
-                选择模式
-              </h2>
-              <p className="text-gray-500 text-xs sm:text-sm max-w-lg mx-auto">
-                点选模式后填写问题；可选上传文本背景资料。进入对话前请登录。
+      <main>
+        <section id="experience" className="scroll-mt-20 px-6 py-12 sm:py-16" aria-labelledby="experience-heading">
+          <div className="mx-auto grid max-w-[1180px] items-stretch gap-10 lg:grid-cols-2 lg:gap-14">
+            <div className="flex h-full flex-col justify-between">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#626b66]">
+                <span className="text-[#2f6a4a]">●</span> QuestionOS · Decision Lab
               </p>
-            </header>
-
-            <div className="grid md:grid-cols-2 gap-4 sm:gap-5 max-w-3xl mx-auto">
-              <button
-                type="button"
-                onClick={() => selectCalibrate()}
-                className={`text-left rounded-2xl border-2 bg-white p-5 sm:p-6 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${
-                  selectedMode === 'calibrate'
-                    ? 'border-teal-500 ring-2 ring-teal-200'
-                    : 'border-gray-200 hover:border-teal-200'
-                }`}
+              <h1
+                id="experience-heading"
+                className="mt-5 font-serif text-[clamp(2.3rem,3.7vw,3.3rem)] font-medium leading-[1.1] tracking-[-0.02em] text-[#161a19]"
               >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center text-xl sm:text-2xl mb-3 bg-teal-500/[0.08] border border-teal-500/15">
-                  🔍
-                </div>
-                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">思维校准</h3>
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 border border-teal-500/20 mb-2">
-                  单 Agent 多轮对话
-                </span>
-                <p className="text-gray-600 text-sm leading-relaxed">
-                  理清问题、不给现成答案，用追问帮你自己想清楚。
-                </p>
-              </button>
+                在找答案之前，
+                <br />
+                先想清楚
+                <em className="text-[#2f6a4a]">该怎么想</em>。
+              </h1>
+              <p className="mt-5 max-w-[30rem] text-[17px] leading-8 text-[#626b66]">
+                <span className="font-semibold text-[#161a19]">QuestionOS</span> 先分清你此刻的状态：问题还没说清，还是方案已在互相拉扯，再带你进入对应的多轮工作流。
+              </p>
 
-              <button
-                type="button"
-                onClick={() => selectConsult()}
-                className={`text-left rounded-2xl border-2 bg-white p-5 sm:p-6 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 ${
-                  selectedMode === 'consult'
-                    ? 'border-teal-500 ring-2 ring-teal-200'
-                    : 'border-gray-200 hover:border-teal-200'
-                }`}
-              >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center text-xl sm:text-2xl mb-3 bg-teal-500/[0.08] border border-teal-500/15">
-                  ⚔️
-                </div>
-                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">沙盘推演</h3>
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 border border-teal-500/20 mb-2">
-                  多 Agent 模拟辩论
-                </span>
-                <p className="text-gray-600 text-sm leading-relaxed">
-                  多角色碰撞与压力测试，适合方案论证与共识拉扯。
+              <div className="mt-8 border-t border-[#e2e7e4] pt-7">
+                <p className="font-serif text-[clamp(1.7rem,2.5vw,2.2rem)] font-medium leading-[1.14] tracking-[-0.015em]">
+                  让问题<em className="text-[#2f6a4a]">更清晰</em>，
+                  <br />
+                  让决策<em className="text-[#2f6a4a]">更笃定</em>。
                 </p>
-              </button>
+                <ol className="mt-5">
+                  {modeOrder.map((mode, index) => {
+                    const item = MODE_COPY[mode];
+                    return (
+                      <li key={mode} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-4 border-t border-[#e2e7e4] px-1 py-3 transition-colors hover:bg-[#eef4f0]">
+                        <span className="pt-1 font-mono text-xs tracking-wide text-[#2f6a4a]">{String(index + 1).padStart(2, '0')}</span>
+                        <span className="min-w-0">
+                          <span className="block text-[15px] font-semibold text-[#161a19]">{item.name}</span>
+                          <span className="mt-1 block text-[12.5px] leading-5 text-[#626b66]">{item.signal}：{mode === 'calibrate' ? '连续追问，把模糊想清楚。' : '多角色审议，压出共识。'}</span>
+                        </span>
+                        <span className="whitespace-nowrap pt-1 font-mono text-[10.5px] tracking-wide text-[#626b66]">
+                          {mode === 'calibrate' ? '单 Agent · 多轮' : '多 Agent · 审议'}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
             </div>
 
-          {selectedMode && (
-            <div
-              ref={experienceFormRef}
-              id="experience-form"
-              className="scroll-mt-28 max-w-2xl mx-auto mt-8 sm:mt-9 space-y-5"
-              tabIndex={-1}
-            >
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">你要解决什么问题？</label>
+            <div className="flex flex-col overflow-hidden rounded-md border border-[#161a1938] bg-white shadow-[0_1px_0_rgba(22,26,25,0.06),0_18px_48px_rgba(22,26,25,0.08)]">
+              <div className="flex items-center justify-between gap-3 border-b border-[#e2e7e4] px-5 py-3.5">
+                <strong className="text-sm font-semibold">先说说你的情况</strong>
+                <span className="text-xs text-[#626b66]">不用一次说全，我们边聊边理清</span>
+              </div>
+
+              <div className="grid border-b border-[#e2e7e4] md:grid-cols-2" role="group" aria-label="选择思考模式">
+                {modeOrder.map((mode) => {
+                  const item = MODE_COPY[mode];
+                  const active = selectedMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSelectedMode(mode)}
+                      aria-pressed={active}
+                      className={`relative border-b border-[#e2e7e4] p-5 text-left transition-colors last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 ${
+                        active ? 'bg-[#edf5ef]' : 'bg-white hover:bg-[#f3f5f4]'
+                      }`}
+                    >
+                      {active && <span className="absolute left-0 top-0 h-full w-[3px] bg-[#2f6a4a]" aria-hidden />}
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-serif text-lg font-semibold">{item.name}</span>
+                        <span className="rounded-full border border-[#e2e7e4] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-[#626b66]">
+                          {mode === 'calibrate' ? 'Single' : 'Multi'}
+                        </span>
+                      </span>
+                      <span className="mt-3 block text-[13px] leading-6 text-[#303634]">{item.description}</span>
+                      <span className="mt-2 block text-[11.5px] leading-5 text-[#626b66]">{item.fit.replace('适合：', '适合 · ')}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-1 flex-col p-5">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label htmlFor="landing-question" className="text-[13px] font-semibold text-[#161a19]">你要解决什么问题？</label>
+                  <span className="font-mono text-xs text-[#2f6a4a]">当前：{currentMode.name}</span>
+                </div>
                 <textarea
+                  ref={questionInputRef}
+                  id="landing-question"
                   value={experienceQuestion}
                   onChange={(e) => setExperienceQuestion(e.target.value)}
-                  placeholder={
-                    selectedMode === 'calibrate'
-                      ? '用一两句话描述你的纠结、决策或想理清的事…'
-                      : '描述要推演的情境、方案或争议点…'
-                  }
-                  rows={4}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-800 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none resize-y min-h-[120px]"
+                  placeholder={currentMode.placeholder}
+                  rows={5}
+                  className="min-h-[104px] max-h-44 w-full resize-y rounded border border-[#161a1938] bg-[#f9faf9] px-3.5 py-3 text-[15px] leading-6 text-[#161a19] outline-none transition focus:border-[#2f6a4a] focus:ring-4 focus:ring-[#2f6a4a24]"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">背景资料（可选）</label>
-                <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                  仅支持文本文件上传，支持格式：.txt / .md / .doc / .docx，单文件小于 2MB。
-                </p>
+                <p className="mt-2 text-xs text-[#626b66]">{currentMode.fit}</p>
+
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -356,294 +324,113 @@ export default function HomePage() {
                   className="hidden"
                   onChange={onPickFile}
                 />
-                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/90 px-4 py-5 text-center">
-                  {backgroundFileName ? (
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 text-sm text-gray-700">
-                      <span className="font-medium text-teal-800 truncate" title={backgroundFileName}>
-                        已选：{backgroundFileName}
-                      </span>
-                      <div className="flex justify-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={backgroundBusy || !user}
-                          className="text-sm font-semibold text-teal-600 hover:text-teal-700 disabled:opacity-40"
-                        >
-                          更换文件
-                        </button>
-                        <button
-                          type="button"
-                          onClick={clearBackgroundFile}
-                          disabled={backgroundBusy || !user}
-                          className="text-sm font-medium text-gray-500 hover:text-rose-600 disabled:opacity-40"
-                        >
-                          移除
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={backgroundBusy || !user}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-teal-400 bg-white px-5 py-2.5 text-sm font-semibold text-teal-700 shadow-sm hover:bg-teal-50 disabled:opacity-40 transition-colors"
-                    >
-                      <span aria-hidden>📎</span>
-                      选择背景文件
+                <div className="my-4 flex flex-col gap-2 text-[12.5px] text-[#626b66] sm:flex-row sm:items-center">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={backgroundBusy || !user}
+                    className="inline-flex items-center justify-center rounded border border-dashed border-[#161a1938] px-3 py-2 transition hover:border-[#161a19] hover:text-[#161a19] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {backgroundFileName ? `已选：${backgroundFileName}` : '背景资料（可选）'}
+                  </button>
+                  <span>支持 .txt / .md / .doc / .docx，随首条问题带入</span>
+                  {backgroundFileName && (
+                    <button type="button" onClick={clearBackgroundFile} className="text-[#626b66] underline underline-offset-2 hover:text-[#161a19]">
+                      移除
                     </button>
                   )}
                 </div>
-                {!user && (
-                  <p className="text-xs text-gray-500 mt-2 text-center">请先在右上角登录后再上传背景文件。</p>
-                )}
-                {backgroundBusy && <p className="text-xs text-teal-600 mt-2 text-center">正在读取并抽取文本…</p>}
-                {backgroundErr && <p className="text-xs text-rose-600 mt-2 text-center">{backgroundErr}</p>}
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                {!user && <p className="-mt-2 mb-3 text-xs text-[#626b66]">上传文件需要先登录；文字问题会在登录后继续。</p>}
+                {backgroundBusy && <p className="-mt-2 mb-3 text-xs text-[#2f6a4a]">正在读取并抽取文本...</p>}
+                {backgroundErr && <p className="-mt-2 mb-3 text-xs text-rose-700">{backgroundErr}</p>}
+
                 <button
                   type="button"
                   onClick={handleExperienceSubmit}
                   disabled={!experienceQuestion.trim()}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl px-8 py-3.5 text-base font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-md shadow-teal-500/20 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="mt-auto w-full rounded bg-[#161a19] px-4 py-3.5 text-[15px] font-semibold tracking-wide text-white transition hover:bg-[#213026] disabled:cursor-not-allowed disabled:bg-[#d7dcd9] disabled:text-[#626b66]"
                 >
-                  {selectedMode === 'calibrate' ? '进入思维校准' : '进入沙盘推演'}
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
+                  {currentMode.cta} →
                 </button>
-                {!user && <p className="text-xs text-gray-500">提交时将跳转登录，随后进入对话。</p>}
               </div>
             </div>
-          )}
-
-          {!selectedMode && (
-            <p className="text-center text-sm text-gray-400 mt-5 sm:mt-6">↑ 请先点选「思维校准」或「沙盘推演」</p>
-          )}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <div className="h-px max-w-6xl mx-auto bg-gradient-to-r from-transparent via-gray-200 to-transparent my-16" aria-hidden />
-
-      <section id="features" className="py-20 px-6 scroll-mt-24" aria-labelledby="features-heading">
-        <div className="max-w-7xl mx-auto">
-          <header className="text-center mb-14">
-            <h2 id="features-heading" className="text-3xl md:text-5xl font-bold text-gray-900 mb-4">
-              两大核心能力
-            </h2>
-            <p className="text-lg md:text-xl text-gray-500 max-w-2xl mx-auto">针对不同决策场景，提供两种智能对话模式</p>
-          </header>
-          <div className="grid lg:grid-cols-2 gap-8">
-            <article className="rounded-2xl border border-gray-200 bg-white p-8 md:p-10 shadow-sm">
-              <div className="flex flex-col sm:flex-row gap-6">
-                <div className="w-16 h-16 shrink-0 rounded-2xl flex items-center justify-center text-3xl bg-teal-500/[0.08] border border-teal-500/15">
-                  🔍
-                </div>
-                <div>
-                  <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">思维校准</h3>
-                  <p className="text-lg font-semibold text-teal-600 mb-6">单 Agent 多轮对话 · 引导式思考</p>
-                  <ul className="space-y-4 mb-8 text-left">
-                    {[
-                      ['深度追问与引导', 'AI 不会直接给答案，而是通过苏格拉底式提问帮你理清思路'],
-                      ['结构化问题拆解', '将复杂问题拆解为可执行的小步骤'],
-                      ['假设检验', '识别并验证你的隐含假设'],
-                    ].map(([t, d]) => (
-                      <li key={t} className="flex gap-3">
-                        <span className="text-teal-600 font-bold shrink-0">✓</span>
-                        <div>
-                          <strong className="text-gray-900">{t}</strong>
-                          <p className="text-sm text-gray-600 mt-1">{d}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="rounded-xl border border-teal-500/15 bg-teal-500/[0.04] p-4 text-sm">
-                    <p className="font-semibold text-gray-900">适用场景</p>
-                    <p className="text-gray-600 mt-1">个人决策 · 职业规划 · 问题分析 · 创意发散</p>
+        <section id="scenarios" className="px-6 pb-12" aria-labelledby="scenarios-heading">
+          <div className="mx-auto max-w-[1180px]">
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+              <h2 id="scenarios-heading" className="font-serif text-[22px] font-semibold">不知道从哪儿开始？试试这些真实场景</h2>
+              <p className="max-w-[34rem] text-[13px] text-[#626b66]">挑一个最像你的，它会填到上面的框里，你可以改完再开始。</p>
+            </div>
+            <div className="grid gap-5 lg:grid-cols-2">
+              {SCENARIO_GROUPS.map((group) => (
+                <article key={group.title} className="overflow-hidden rounded border border-[#e2e7e4] bg-white shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.06)]">
+                  <div className="flex items-center justify-between border-b border-[#e2e7e4] bg-[#f9faf9] px-4 py-3">
+                    <h3 className="text-[13.5px] font-semibold">{group.title}</h3>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#2f6a4a]">{group.mode === 'calibrate' ? 'Calibrate' : 'Sandbox'}</span>
                   </div>
-                </div>
-              </div>
-            </article>
-            <article className="rounded-2xl border border-gray-200 bg-white p-8 md:p-10 shadow-sm">
-              <div className="flex flex-col sm:flex-row gap-6">
-                <div className="w-16 h-16 shrink-0 rounded-2xl flex items-center justify-center text-3xl bg-teal-500/[0.08] border border-teal-500/15">
-                  ⚔️
-                </div>
-                <div>
-                  <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">沙盘推演</h3>
-                  <p className="text-lg font-semibold text-teal-600 mb-6">多 Agent 模拟辩论 · 全视角碰撞</p>
-                  <ul className="space-y-4 mb-8 text-left">
-                    {[
-                      ['多角色模拟辩论', '不同立场的 AI 角色围绕你的议题展开讨论'],
-                      ['压力测试', '模拟极端情况和反对意见，验证方案鲁棒性'],
-                      ['全景视角', '从多个维度审视同一问题，避免认知偏差'],
-                    ].map(([t, d]) => (
-                      <li key={t} className="flex gap-3">
-                        <span className="text-teal-600 font-bold shrink-0">✓</span>
-                        <div>
-                          <strong className="text-gray-900">{t}</strong>
-                          <p className="text-sm text-gray-600 mt-1">{d}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="rounded-xl border border-teal-500/15 bg-teal-500/[0.04] p-4 text-sm">
-                    <p className="font-semibold text-gray-900">适用场景</p>
-                    <p className="text-gray-600 mt-1">战略决策 · 风险评估 · 方案论证 · 团队共识</p>
-                  </div>
-                </div>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <div className="h-px max-w-6xl mx-auto bg-gradient-to-r from-transparent via-gray-200 to-transparent my-16" aria-hidden />
-
-      <section id="scenarios" className="py-20 px-6 bg-gray-50 scroll-mt-24" aria-labelledby="scenarios-heading">
-        <div className="max-w-7xl mx-auto">
-          <header className="text-center mb-14">
-            <h2 id="scenarios-heading" className="text-3xl md:text-5xl font-bold text-gray-900 mb-4">
-              试试这些真实场景
-            </h2>
-            <p className="text-lg text-gray-500 max-w-2xl mx-auto">
-              点击后带入「选择模式」区并预选思维校准，填好问题后登录开始
-            </p>
-          </header>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {SCENARIO_GROUPS.map((g) => (
-              <div key={g.title} className="space-y-3">
-                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <span aria-hidden>{g.icon}</span> {g.title}
-                </h3>
-                {g.items.map((q) => (
+                  {group.items.map((text) => (
+                    <button
+                      key={text}
+                      type="button"
+                      onClick={() => applyScenario(group.mode, text)}
+                      className="block w-full border-t border-[#e2e7e4] bg-white px-4 py-3 text-left text-[13.5px] leading-6 text-[#161a19] transition-all first:border-t-0 hover:bg-[#f3f5f4] hover:pl-5"
+                    >
+                      <span className="mr-2 text-[#95a09a]">→</span>{text}
+                    </button>
+                  ))}
+                </article>
+              ))}
+            </div>
+            {scenariosExpanded && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {EXTRA_SCENARIOS.map((item) => (
                   <button
-                    key={q}
+                    key={item.text}
                     type="button"
-                    onClick={() => selectCalibrate(q)}
-                    className="w-full text-left rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm hover:border-teal-300 hover:shadow-md hover:translate-x-1 transition-all"
+                    onClick={() => applyScenario(item.mode, item.text)}
+                    className="rounded border border-[#e2e7e4] bg-white px-4 py-3 text-left text-[13.5px] leading-6 text-[#161a19] transition hover:border-[#c3cbc6] hover:bg-[#f3f5f4]"
                   >
-                    <p className="text-gray-800 font-medium text-sm leading-snug">{q}</p>
+                    <span className="mr-2 text-[#95a09a]">→</span>{item.text}
                   </button>
                 ))}
               </div>
-            ))}
-          </div>
-          {scenariosExpanded && (
-            <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto">
-              {EXTRA_SCENARIOS.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => selectCalibrate(q)}
-                  className="text-left rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 hover:border-teal-300 transition-all"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="text-center mt-10">
+            )}
             <button
               type="button"
               onClick={() => setScenariosExpanded((v) => !v)}
-              className="inline-flex items-center rounded-xl border-2 border-teal-500 px-6 py-3 font-semibold text-teal-600 hover:bg-teal-50 transition-colors"
+              className="mt-4 rounded border border-[#e2e7e4] bg-transparent px-4 py-2.5 text-[13px] text-[#626b66] transition hover:border-[#161a19] hover:text-[#161a19]"
             >
-              {scenariosExpanded ? '收起更多场景' : '查看更多场景 →'}
+              {scenariosExpanded ? '收起更多场景' : '查看更多场景'}
             </button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <div className="h-px max-w-6xl mx-auto bg-gradient-to-r from-transparent via-gray-200 to-transparent my-16" aria-hidden />
-
-      <section id="workflow" className="py-20 px-6 scroll-mt-24" aria-labelledby="workflow-heading">
-        <div className="max-w-6xl mx-auto">
-          <header className="text-center mb-14">
-            <h2 id="workflow-heading" className="text-3xl md:text-5xl font-bold text-gray-900 mb-4">
-              三步开启智能决策
-            </h2>
-            <p className="text-lg text-gray-500">简单三步，快速上手</p>
-          </header>
-          <ol className="grid md:grid-cols-3 gap-12 list-none">
+        <section className="border-y border-[#e2e7e4] bg-[#f9faf9]" aria-label="使用流程">
+          <div className="mx-auto grid max-w-[1180px] sm:grid-cols-2 lg:grid-cols-4">
             {[
-              {
-                n: '1',
-                t: '选择模式',
-                d: '根据你的需求，选择「思维校准」或「沙盘推演」',
-                hint: ['🔍 单人深度思考', '⚔️ 多方观点碰撞'],
-              },
-              {
-                n: '2',
-                t: '描述问题',
-                d: '使用自然语言描述困境。支持文本背景资料上传。',
-                hint: ['✍️ 支持中英文', '📎 背景与问题一体提交'],
-              },
-              {
-                n: '3',
-                t: '获得洞察',
-                d: 'AI 通过对话帮你理清思路；校准模式可输出行动建议清单',
-                hint: ['💡 结构化输出', '📋 行动建议清单'],
-              },
-            ].map((step) => (
-              <li key={step.n} className="text-center">
-                <div className="flex justify-center mb-6">
-                  <div className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-teal-500 to-teal-400 text-white text-2xl font-extrabold flex items-center justify-center shadow-lg shadow-teal-500/25">
-                    {step.n}
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-3">{step.t}</h3>
-                <p className="text-gray-600 leading-relaxed mb-4">{step.d}</p>
-                <div className="inline-block rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm text-sm text-gray-700 text-left">
-                  {step.hint.map((line) => (
-                    <p key={line} className="font-medium">
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              </li>
+              ['01', '先选状态', '看不清自己，就校准；冲突已经出现，就沙盘。'],
+              ['02', '写下你的问题', '直接描述困惑或冲突；不确定怎么开口，再从案例里找个最像的。'],
+              ['03', '开始对话', '你写的内容和背景资料都会带过去，不用重说一遍。'],
+              ['04', '多轮推进', '校准连续追问，沙盘轮流审议，直到问题变清楚。'],
+            ].map(([n, title, text]) => (
+              <div key={n} className="border-b border-r border-[#e2e7e4] p-5 last:border-r-0 lg:border-b-0">
+                <div className="font-mono text-xs text-[#2f6a4a]">{n}</div>
+                <div className="mt-2 text-sm font-semibold">{title}</div>
+                <p className="mt-1 text-[12.5px] leading-5 text-[#626b66]">{text}</p>
+              </div>
             ))}
-          </ol>
-          <div className="text-center mt-14">
-            <button
-              type="button"
-              onClick={scrollToExperience}
-              className="inline-flex items-center justify-center gap-2 rounded-xl px-12 py-4 text-lg font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-lg shadow-teal-500/25 hover:shadow-xl transition-all"
-            >
-              立即开始体验
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </button>
-            <p className="text-sm text-gray-500 mt-4">登录后使用 · Web 端</p>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="py-20 px-6 bg-gray-50" aria-labelledby="cta-heading">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 id="cta-heading" className="text-3xl md:text-5xl font-bold text-gray-900 mb-6">
-            准备好做出更明智的决策了吗？
-          </h2>
-          <p className="text-lg text-gray-600 mb-10">登录后开始校准或沙盘推演</p>
-          <button
-            type="button"
-            onClick={() => {
-              if (user) {
-                selectCalibrate();
-              } else {
-                router.push('/register');
-              }
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl px-12 py-5 text-lg font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-lg shadow-teal-500/25 hover:shadow-xl transition-all"
-          >
-            {user ? '进入思维校准' : '免费注册账号'}
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </button>
-        </div>
-      </section>
+        <footer className="border-t border-[#e2e7e4] px-6 py-8">
+          <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 text-[12.5px] text-[#626b66]">
+            <span>QuestionOS · 认知协同 Agent</span>
+            <span>先判断问题，再进入对话</span>
+          </div>
+        </footer>
+      </main>
     </div>
   );
 }

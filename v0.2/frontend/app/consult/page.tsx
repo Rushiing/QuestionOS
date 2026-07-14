@@ -9,7 +9,6 @@ import { AuthButton, useAuth } from '../../components/AuthButton';
 import { AgentInstance, OnboardingJobStatus, sandboxClient } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
-import { CONSULT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
 import { handleEnterToSubmit } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 import { SANDBOX_TURN_MAX_WAIT_MS } from '../../lib/runtime-config';
@@ -121,7 +120,7 @@ const sandboxRouteMarkdownComponents: Components = {
   ...consultAgentMarkdownComponents,
   h3: ({ node, children, ...props }) => (
     <h3
-      className="mt-0 mb-3 text-xl font-bold tracking-tight text-teal-800 border-b border-teal-300/60 pb-2.5"
+      className="mt-0 mb-3 border-b border-[#c3cbc6] pb-2.5 font-serif text-xl font-semibold tracking-tight text-[#161a19]"
       {...props}
     >
       {children}
@@ -134,7 +133,7 @@ const sandboxClassifyMarkdownComponents: Components = {
   ...consultAgentMarkdownComponents,
   h3: ({ node, children, ...props }) => (
     <h3
-      className="mt-0 mb-3 text-xl font-bold tracking-tight text-indigo-900 border-b border-indigo-300/55 pb-2.5"
+      className="mt-0 mb-3 border-b border-[#c3cbc6] pb-2.5 font-serif text-xl font-semibold tracking-tight text-[#161a19]"
       {...props}
     >
       {children}
@@ -163,6 +162,7 @@ export default function ConsultPage() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [pendingAutoStartQuestion, setPendingAutoStartQuestion] = useState<string | null>(null);
   const [isAgentResponding, setIsAgentResponding] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [integrationEntryOpen, setIntegrationEntryOpen] = useState(false);
@@ -190,8 +190,6 @@ export default function ConsultPage() {
   const [puzzleHover, setPuzzleHover] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  /** 未开局时先展示推荐场景，点选或「自己写」后再露出议题输入区 */
-  const [starterComposerVisible, setStarterComposerVisible] = useState(false);
   const lastSeqRef = useRef<number>(0);
   const hasStreamActivityRef = useRef<boolean>(false);
   /** 超时插入的「本轮较慢」气泡 id；若随后收到 turn_done 则移除，避免与完整回复并存 */
@@ -272,9 +270,10 @@ export default function ConsultPage() {
     
     // 读取从首页传入的问题
     const storedQuestion = sessionStorage.getItem('consultQuestion');
-    if (storedQuestion) {
-      setInputMessage(storedQuestion);
-      setStarterComposerVisible(true);
+    const initialQuestion = storedQuestion?.trim();
+    if (initialQuestion) {
+      setInputMessage(initialQuestion);
+      setPendingAutoStartQuestion(initialQuestion);
       sessionStorage.removeItem('consultQuestion');
     }
   }, []);
@@ -823,12 +822,19 @@ export default function ConsultPage() {
     }
   };
 
-  const handleStartSession = async () => {
-    if (!inputMessage.trim() || isAgentResponding) return;
+  const startSession = async (rawQuestion: string) => {
+    const question = rawQuestion.trim();
+    if (!question || isAgentResponding) return;
+    if (!isLoggedIn) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('consultQuestion', question);
+      }
+      router.push('/login');
+      return;
+    }
     lastSeqRef.current = 0;
     setDebugLogs([]);
     setSessionStarted(true);
-    const question = inputMessage.trim();
     const userMsg: Message = {
       id: `${Date.now()}-user`,
       role: 'user',
@@ -854,6 +860,13 @@ export default function ConsultPage() {
     }
   };
 
+  useEffect(() => {
+    if (!pendingAutoStartQuestion || authLoading || sessionStarted || isAgentResponding) return;
+    const question = pendingAutoStartQuestion;
+    setPendingAutoStartQuestion(null);
+    void startSession(question);
+  }, [pendingAutoStartQuestion, authLoading, sessionStarted, isAgentResponding]);
+
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isAgentResponding || !sessionId) return;
     const userText = inputMessage.trim();
@@ -871,7 +884,7 @@ export default function ConsultPage() {
     setSessionStarted(false);
     setMessages([]);
     setInputMessage('');
-    setStarterComposerVisible(false);
+    setPendingAutoStartQuestion(null);
     setIsAgentResponding(false);
     setSessionId(null);
     lastSeqRef.current = 0;
@@ -879,34 +892,32 @@ export default function ConsultPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex flex-col">
+    <div className="flex min-h-screen flex-col bg-[#f7f8f8] text-[#161a19]">
       {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <header className="sticky top-0 z-10 border-b border-[#e2e7e4] bg-[#f7f8f8]/90 px-5 py-3 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[780px] flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => router.push('/')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+              className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded border border-[#e2e7e4] bg-white transition-colors hover:border-[#161a19] hover:bg-[#f3f5f4]"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-teal-400 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-teal-500/20 shrink-0">
+            <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
               Q
             </div>
             <div className="min-w-0">
-              <h1 className="text-base font-bold text-gray-900 leading-tight">QuestionOS</h1>
-              <p className="text-xs text-gray-500">
-                <span className="font-medium text-teal-800">⚔️ 沙盘推演</span>
-                {sessionStarted && sessionId ? (
-                  <span className="ml-2 text-gray-400 font-mono break-all" title={sessionId}>
-                    #{sessionId}
-                  </span>
-                ) : (
-                  <span className="ml-2">多角色辩论 · 压力测试</span>
-                )}
+              <h1 className="flex items-center gap-2 font-serif text-base font-semibold leading-tight tracking-[-0.01em]">
+                沙盘推演
+                <span className="rounded border border-[#2f6a4a66] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-[#2f6a4a]">
+                  Sandbox
+                </span>
+              </h1>
+              <p className="text-[11.5px] text-[#626b66]">
+                多 Agent · 分诊 → 审议 → 整合{sessionStarted && sessionId ? ' · 会话已建立' : ''}
               </p>
             </div>
           </div>
@@ -914,7 +925,7 @@ export default function ConsultPage() {
             {sessionStarted && (
               <button
                 onClick={handleReset}
-                className="text-sm text-slate-500 hover:text-slate-700"
+                className="rounded border border-[#e2e7e4] bg-white px-3 py-1.5 text-sm text-[#626b66] transition hover:border-[#161a19] hover:text-[#161a19]"
               >
                 重新开始
               </button>
@@ -924,269 +935,67 @@ export default function ConsultPage() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-4 flex flex-col">
-        {/* 开始前：Agent团队展示 */}
+      <main className="mx-auto flex w-full max-w-[780px] flex-1 flex-col px-5 py-5">
+        {/* 开始前：只保留自动开局/空状态，不再重复首页的沙盘选择 */}
         {!sessionStarted && (
-          <div className="flex-1 flex flex-col justify-center">
-            <div className="mb-8">
-              {loadingAgents ? (
-                <div className="flex justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
-                </div>
+          <div className="flex flex-1 items-center justify-center py-16">
+            <div className="w-full max-w-[560px] rounded border border-[#e2e7e4] bg-white p-8 text-center shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.06)]">
+              {pendingAutoStartQuestion || authLoading ? (
+                <>
+                  <div className="mx-auto mb-5 h-7 w-7 rounded-full border-2 border-[#d5ded9] border-t-[#2f6a4a] animate-spin" />
+                  <p className="font-serif text-2xl font-medium text-[#161a19]">正在进入沙盘推演</p>
+                  <p className="mt-3 text-sm leading-6 text-[#626b66]">正在带入首页的议题，并启动多角色审议。</p>
+                </>
               ) : (
-                <div className="space-y-8 pt-1">
-                  <div>
-                    <p className="text-center text-xs text-slate-500 mb-3 tracking-wide">六间审议室</p>
-                    <div className="flex justify-center gap-5 sm:gap-6 flex-wrap">
-                      {SANDBOX_DELIBERATION_ROOMS.map((room) => (
-                          <div key={room.id} className="flex flex-col items-center min-w-[4.5rem] max-w-[5.5rem]">
-                            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-3xl mb-2">
-                              {room.avatar}
-                            </div>
-                            <span className="text-sm font-medium text-slate-700 text-center leading-tight">{room.name}</span>
-                            <span className="text-[10px] text-slate-500 text-center leading-snug mt-0.5">{room.description}</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-center text-xs text-slate-500 mb-3 tracking-wide">外聘推演专家</p>
-                    <div className="flex justify-center gap-8 sm:gap-10 flex-wrap items-start">
-                      {SHOW_EMBEDDED_CONNECTED_AGENTS_CARD && (
-                        <div
-                          className="relative flex flex-col items-center min-w-[4.5rem]"
-                          onMouseEnter={() => setPuzzleHover(true)}
-                          onMouseLeave={() => setPuzzleHover(false)}
-                        >
-                          <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-3xl mb-2">
-                            🧩
-                          </div>
-                          <span
-                            className="text-sm font-medium text-slate-700 text-center leading-tight max-w-[10rem] truncate"
-                            title={puzzlePrimaryLabel}
-                          >
-                            {puzzlePrimaryLabel}
-                          </span>
-                          {instances.length > 0 && puzzleHover && (
-                            <div
-                              className="absolute left-1/2 bottom-full z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-2 py-2 shadow-lg"
-                              role="tooltip"
-                            >
-                              <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                                已接入实例
-                              </p>
-                              <div
-                                ref={instanceHoverScrollRef}
-                                className="max-h-28 overflow-y-auto text-left text-xs text-slate-700"
-                              >
-                                {instances.map((it) => (
-                                  <div
-                                    key={it.agentId}
-                                    className="truncate rounded px-1.5 py-1 hover:bg-slate-50"
-                                    title={`${it.agentId} · ${it.provider}`}
-                                  >
-                                    <span className="font-medium">{it.agentId}</span>
-                                    <span className="ml-1 text-slate-400">{it.provider}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (authLoading) return;
-                          if (!isLoggedIn) {
-                            setIntegrationHint('请先登录后继续三方接入。');
-                            router.push('/login');
-                            return;
-                          }
-                          setIntegrationEntryOpen((v) => !v);
-                        }}
-                        className="flex flex-col items-center min-w-[4.5rem] rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
-                      >
-                        <div
-                          className={`w-16 h-16 rounded-full border-2 flex items-center justify-center text-2xl mb-2 transition-colors ${
-                            integrationEntryOpen
-                              ? 'bg-teal-100 border-teal-400'
-                              : 'bg-teal-50 border-teal-200 hover:bg-teal-100'
-                          }`}
-                        >
-                          🔌
-                        </div>
-                        <span className="text-sm font-medium text-teal-700 text-center leading-tight">三方接入入口</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {integrationEntryOpen && (
-                <div className="mt-5 mx-auto max-w-xl bg-teal-50 border border-teal-200 rounded-xl p-5 text-sm text-teal-900">
-                  <div className="font-semibold mb-1">OpenClaw Agent 一键委托</div>
-                  <p className="text-xs text-teal-700 mb-4">点击下方按钮生成接入委托单并复制到剪贴板，发给你的 OpenClaw Agent，它会自动完成接入与联通。</p>
-
-                  {!isLoggedIn && (
-                    <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                      当前未登录：请先登录后继续。
-                    </div>
-                  )}
-
-                  <button
-                    onClick={generateOneClickOnboarding}
-                    disabled={!isLoggedIn || isGeneratingOnboardingPacket}
-                    className="w-full px-4 py-3 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
-                  >
-                    {isGeneratingOnboardingPacket ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        生成中...
-                      </>
-                    ) : (
-                      <>
-                        <span>⚡</span>
-                        生成接入委托单（自动复制）
-                      </>
-                    )}
-                  </button>
-
-                  {integrationHint && (
-                    <p className="mt-3 text-xs text-teal-700">{integrationHint}</p>
-                  )}
-
-                  {onboardingJobStatus && (
-                    <div className="mt-3 text-xs rounded-lg p-3 border bg-white border-teal-200">
-                      <div className="font-medium text-teal-800 mb-1">委托状态：{onboardingJobStatus.status}</div>
-                      <div className="text-teal-700">{onboardingJobStatus.message}</div>
-                      {onboardingJobStatus.agentId && (
-                        <div className="mt-1 text-teal-600">Agent: {onboardingJobStatus.agentId}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {instances.length > 0 && (
-                    <div className="mt-3 bg-white border border-teal-200 rounded-lg p-3">
-                      <div className="text-xs font-semibold text-teal-800 mb-2">已接入实例（共 {instances.length} 个）</div>
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
-                        {instances.map((item) => (
-                          <div key={item.agentId} className="text-xs text-teal-700 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            <span className="font-medium text-teal-900">{item.agentId}</span>
-                            <span className="text-teal-500">({item.provider})</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50/60 via-white to-white p-6 sm:p-8 mb-6 shadow-sm shadow-teal-500/5">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">想推演什么情境？</h2>
-              <p className="text-gray-600 text-sm sm:text-base mb-6 leading-relaxed">
-                内置多角色将围绕你的议题辩论与整合。可先选推荐场景填入议题，再开始推演。
-              </p>
-              <p className="text-xs font-semibold uppercase tracking-wider text-teal-800 mb-3">推荐场景</p>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {CONSULT_RECOMMENDED_SCENARIOS.map((q, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => {
-                      if (!isLoggedIn) {
-                        setIntegrationHint('请先登录后开始沙盘推演。');
-                        router.push('/login');
-                        return;
-                      }
-                      setInputMessage(q);
-                      setStarterComposerVisible(true);
-                    }}
-                    className="text-left px-4 py-3.5 rounded-xl bg-white text-gray-800 text-sm font-medium border border-gray-200 hover:border-teal-400 hover:bg-teal-50/80 hover:shadow-sm transition-all leading-snug"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isLoggedIn) {
-                    router.push('/login');
-                    return;
-                  }
-                  setStarterComposerVisible(true);
-                }}
-                className="mt-6 text-sm font-semibold text-teal-700 hover:text-teal-800 underline-offset-2 hover:underline"
-              >
-                或自己写推演议题 ↓
-              </button>
-            </div>
-
-            {starterComposerVisible && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-                <label className="block text-xs font-medium text-gray-500 mb-2">推演议题</label>
-                <textarea
-                  ref={inputRef}
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => handleEnterToSubmit(e, () => void handleStartSession())}
-                  placeholder="描述要推演的情境、方案或争议点…"
-                  className="w-full h-28 p-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white transition-colors overflow-hidden text-[15px]"
-                />
-                <div className="flex justify-end mt-3">
+                <>
+                  <p className="font-serif text-2xl font-medium text-[#161a19]">还没有推演议题</p>
+                  <p className="mt-3 text-sm leading-6 text-[#626b66]">沙盘推演现在从首页直接进入对话。先回首页写下议题，再选择沙盘模式开始。</p>
                   <button
                     type="button"
-                    onClick={handleStartSession}
-                    disabled={!inputMessage.trim() || isAgentResponding}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-md shadow-teal-500/20 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+                    onClick={() => router.push('/')}
+                    className="mt-6 rounded bg-[#161a19] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#213026]"
                   >
-                    ⚔️ 开始推演
+                    回首页选择议题
                   </button>
-                </div>
-              </div>
-            )}
-
-            {!starterComposerVisible && (
-              <p className="text-center text-sm text-gray-400 py-3">点选上方推荐场景，或点击「自己写推演议题」以显示输入框</p>
-            )}
+                </>
+              )}
+            </div>
           </div>
         )}
 
         {/* 推演进行中 */}
         {sessionStarted && (
-          <div className="flex-1 flex flex-col">
+          <div className="flex flex-1 flex-col">
             {debugPanelOpen && (
-              <div className="mb-3 rounded-xl border border-slate-300 bg-slate-50 p-3">
+              <div className="mb-3 rounded border border-[#c3cbc6] bg-[#f9faf9] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-semibold text-slate-700">SSE 调试面板（前端收到的原始事件）</div>
+                  <div className="text-xs font-semibold text-[#303634]">SSE 调试面板（前端收到的原始事件）</div>
                   <button
                     onClick={() => setDebugLogs([])}
-                    className="text-xs text-slate-500 hover:text-slate-700"
+                    className="text-xs text-[#626b66] hover:text-[#161a19]"
                   >
                     清空
                   </button>
                 </div>
-                <div className="max-h-44 overflow-y-auto text-xs font-mono text-slate-700 whitespace-pre-wrap">
+                <div className="max-h-44 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-[#303634]">
                   {debugLogs.length === 0 ? '暂无事件...' : debugLogs.join('\n')}
                 </div>
               </div>
             )}
             {/* 消息列表 */}
-            <div className="flex-1 overflow-y-auto space-y-4 pb-4">
+            <div className="flex-1 space-y-4 overflow-y-auto pb-4">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-2' : 'order-1'}`}>
+                  <div className={`max-w-[84%] ${msg.role === 'user' ? 'order-2' : 'order-1'}`}>
                     {msg.role === 'user' ? (
-                      <div className="rounded-2xl px-4 py-3 bg-slate-100 text-slate-800 rounded-br-md">
+                      <div className="rounded border border-[#e2e7e4] bg-[#f9faf9] px-4 py-3 text-[#303634]">
                         <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
                       </div>
                     ) : msg.variant === 'sandbox_classify' ? (
-                      <div className="rounded-2xl border-2 border-indigo-300/70 bg-gradient-to-br from-indigo-50 via-white to-violet-50/80 px-4 py-3 shadow-sm text-slate-800">
+                      <div className="rounded border border-[#c3cbc6] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.06)]">
                         <div className="max-w-none text-[0.9375rem] leading-relaxed markdown-content consult-agent-md">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={sandboxClassifyMarkdownComponents}>
                             {msg.content}
@@ -1194,7 +1003,7 @@ export default function ConsultPage() {
                         </div>
                       </div>
                     ) : msg.variant === 'sandbox_route' ? (
-                      <div className="rounded-2xl border-2 border-teal-300/70 bg-gradient-to-br from-teal-50 via-white to-cyan-50 px-4 py-3 shadow-sm text-slate-800">
+                      <div className="rounded border border-[#c3cbc6] bg-[#edf5ef] px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.06)]">
                         <div className="max-w-none text-[0.9375rem] leading-relaxed markdown-content consult-agent-md">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={sandboxRouteMarkdownComponents}>
                             {msg.content}
@@ -1202,19 +1011,19 @@ export default function ConsultPage() {
                         </div>
                       </div>
                     ) : msg.role === 'system' ? (
-                      <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-xl text-sm">
+                      <div className="rounded border border-dashed border-[#c3cbc6] bg-[#f9faf9] px-4 py-2 text-center text-sm text-[#626b66]">
                         {msg.content}
                       </div>
                     ) : (
-                      <div className="bg-white border border-slate-200 text-slate-800 px-4 py-3 rounded-2xl rounded-bl-md shadow-sm overflow-hidden">
+                      <div className="overflow-hidden rounded border border-[#e2e7e4] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xl">{msg.agent_avatar}</span>
-                          <span className="font-semibold text-slate-800">{msg.agent_name}</span>
+                          <span className="grid h-8 w-8 place-items-center rounded border border-[#c3cbc6] bg-[#f9faf9] text-base">{msg.agent_avatar}</span>
+                          <span className="font-semibold text-[#303634]">{msg.agent_name}</span>
                           {msg.is_streaming && (
-                            <span className="text-xs text-teal-500 animate-pulse">输出中...</span>
+                            <span className="animate-pulse text-xs text-[#2f6a4a]">输出中...</span>
                           )}
                         </div>
-                        <div className="max-w-none text-[0.9375rem] text-slate-700 leading-relaxed">
+                        <div className="max-w-none text-[0.9375rem] leading-relaxed text-[#303634]">
                           <div className="markdown-content consult-agent-md">
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={consultAgentMarkdownComponents}>
                               {agentMarkdownSource(msg)}
@@ -1230,7 +1039,7 @@ export default function ConsultPage() {
             </div>
 
             {/* 输入区域 */}
-            <div className="border-t border-slate-200 pt-4 mt-4">
+            <div className="mt-4 border-t border-[#e2e7e4] pt-4">
               <div className="flex gap-3">
                 <div className="flex-1 relative">
                   <textarea
@@ -1240,7 +1049,7 @@ export default function ConsultPage() {
                     onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                     placeholder={isAgentResponding ? "等待专家回复..." : "继续追问或补充..."}
                     disabled={isAgentResponding}
-                    className="w-full h-12 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white transition-colors disabled:opacity-50 overflow-hidden"
+                    className="h-12 w-full resize-none overflow-hidden rounded border border-[#161a1938] bg-white px-4 py-3 text-[#161a19] transition-colors focus:border-[#2f6a4a] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#2f6a4a1f] disabled:opacity-50"
                     rows={1}
                   />
                 </div>
@@ -1248,7 +1057,7 @@ export default function ConsultPage() {
                   type="button"
                   onClick={handleSendMessage}
                   disabled={!inputMessage.trim() || isAgentResponding || !sessionId}
-                  className="px-5 py-2 rounded-xl font-semibold text-white bg-gradient-to-br from-teal-500 to-teal-400 shadow-md shadow-teal-500/15 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+                  className="rounded bg-[#161a19] px-5 py-2 font-semibold text-white transition hover:bg-[#213026] disabled:cursor-not-allowed disabled:bg-[#d7dcd9] disabled:text-[#626b66]"
                 >
                   发送
                 </button>

@@ -52,9 +52,9 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${notoSansSc.variable} antialiased font-sans`}>
         <Providers>
-          <main className="min-h-screen">
+          <div className="min-h-screen">
             {children}
-          </main>
+          </div>
         </Providers>
       </body>
     </html>

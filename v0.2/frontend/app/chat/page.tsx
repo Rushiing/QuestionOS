@@ -559,6 +559,7 @@ function ChatPageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -575,6 +576,15 @@ function ChatPageContent() {
   const lastSeqRef = useRef<number>(0);
 
   const showInputBar = composerUnlocked || messages.length > 0;
+
+  const prefillQuestion = (question: string) => {
+    setInput(question);
+    setComposerUnlocked(true);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(question.length, question.length);
+    });
+  };
 
   useEffect(() => {
     if (streamingTypeTarget === null) {
@@ -970,48 +980,48 @@ function ChatPageContent() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-b from-gray-50 to-white">
+    <div className="flex h-screen flex-col bg-[#f7f8f8] text-[#161a19]">
       {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 px-6 py-4 sticky top-0 z-20">
-        <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <header className="sticky top-0 z-20 border-b border-[#e2e7e4] bg-[#f7f8f8]/90 px-5 py-3 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[760px] flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={handleNewChat}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+              className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded border border-[#e2e7e4] bg-white transition-colors hover:border-[#161a19] hover:bg-[#f3f5f4]"
               title="回首页"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-teal-400 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-teal-500/20 shrink-0">
+            <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
               Q
             </div>
             <div className="min-w-0">
-              <h1 className="text-base font-bold text-gray-900 leading-tight">QuestionOS</h1>
-              <p className="text-xs text-gray-500">
-                思维校准 · 单轮追问
-                {sessionId && (
-                  <span className="ml-2 text-gray-400 font-mono break-all" title={sessionId}>
-                    #{sessionId}
-                  </span>
-                )}
+              <h1 className="flex items-center gap-2 font-serif text-base font-semibold leading-tight tracking-[-0.01em]">
+                思维校准
+                <span className="rounded border border-[#2f6a4a66] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-[#2f6a4a]">
+                  Calibrate
+                </span>
+              </h1>
+              <p className="text-[11.5px] text-[#626b66]">
+                单 Agent · 多轮追问{sessionId ? ' · 会话已建立' : ''}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-teal-700 font-medium">
-              <span className="w-1.5 h-1.5 bg-teal-500 rounded-full" />
+            <div className="hidden items-center gap-1.5 text-xs font-medium text-[#626b66] sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#16a34a] shadow-[0_0_0_3px_rgba(22,163,74,0.2)]" />
               在线
             </div>
             {user && (
               <button
                 type="button"
                 onClick={() => router.push('/history')}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-teal-50 rounded-lg transition-colors text-sm"
+                className="inline-flex items-center gap-1.5 rounded border border-[#e2e7e4] bg-white px-3 py-1.5 text-sm text-[#161a19] transition-colors hover:border-[#161a19] hover:bg-[#f3f5f4]"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 历史
               </button>
@@ -1022,42 +1032,47 @@ function ChatPageContent() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="flex-1 overflow-y-auto scroll-smooth">
+        <div className="mx-auto max-w-[760px] px-5 py-12 sm:py-14">
           {/* Welcome */}
           {showWelcome && messages.length === 0 && (
-            <div className="mb-10 rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50/60 via-white to-white p-6 sm:p-8 shadow-sm shadow-teal-500/5">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">你在想什么问题？</h2>
-              <p className="text-gray-600 text-sm sm:text-base mb-6 leading-relaxed">
-                我会通过追问帮你理清问题的本质。可先选一条推荐场景直接开始，或展开输入框自己写。
+            <div className="mb-10 px-0 py-8 sm:py-12">
+              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#626b66]">
+                <span className="text-[#2f6a4a]">●</span> Calibrate
               </p>
-              <p className="text-xs font-semibold uppercase tracking-wider text-teal-800 mb-3">推荐场景</p>
-              <div className="grid sm:grid-cols-2 gap-3">
+              <h2 className="mt-3 font-serif text-[clamp(1.9rem,3.4vw,2.6rem)] font-medium leading-[1.1] tracking-[-0.02em] text-[#161a19]">
+                把还说不清的问题，
+                <br />
+                先问清楚。
+              </h2>
+              <p className="mt-3 max-w-[34rem] text-[15.5px] leading-7 text-[#626b66]">
+                我会用连续追问帮你理清问题，而不是立刻给建议清单。可先选一条推荐场景预填，再改成你的真实情况。
+              </p>
+              <p className="mb-3 mt-8 flex items-center gap-2 text-[12.5px] text-[#626b66] before:h-px before:w-5 before:bg-[#c3cbc6]">推荐场景</p>
+              <div className="grid gap-3 sm:grid-cols-2">
                 {CHAT_RECOMMENDED_SCENARIOS.map((q, i) => (
                   <button
                     key={i}
                     type="button"
                     onClick={() => {
-                      if (!user) {
-                        setValidationError('请先登录后再开始对话');
-                        setTimeout(() => setValidationError(null), 4000);
-                        return;
-                      }
-                      void handleSendMessage(q);
+                      prefillQuestion(q);
                     }}
-                    className="text-left px-4 py-3.5 rounded-xl bg-white text-gray-800 text-sm font-medium border border-gray-200 hover:border-teal-400 hover:bg-teal-50/80 hover:shadow-sm transition-all leading-snug"
+                    className="rounded border border-[#e2e7e4] bg-white px-4 py-3.5 text-left text-[13.5px] leading-6 text-[#161a19] transition hover:border-[#c3cbc6] hover:bg-[#f3f5f4]"
                   >
-                    {q}
+                    <span className="mr-1 text-[#95a09a]">→</span>{q}
                   </button>
                 ))}
               </div>
               {!composerUnlocked && (
                 <button
                   type="button"
-                  onClick={() => setComposerUnlocked(true)}
-                  className="mt-6 text-sm font-semibold text-teal-700 hover:text-teal-800 underline-offset-2 hover:underline"
+                  onClick={() => {
+                    setComposerUnlocked(true);
+                    requestAnimationFrame(() => inputRef.current?.focus());
+                  }}
+                  className="mt-6 rounded border border-[#e2e7e4] px-4 py-2.5 text-sm text-[#626b66] transition hover:border-[#161a19] hover:text-[#161a19]"
                 >
-                  或自己输入问题 ↓
+                  或自己输入问题
                 </button>
               )}
             </div>
@@ -1065,12 +1080,12 @@ function ChatPageContent() {
 
           {/* Validation Error */}
           {validationError && (
-            <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
-              💭 {validationError}
+            <div className="mb-4 rounded border border-[#d6c79a] bg-[#fff9e8] p-4 text-sm text-[#67531a]">
+              {validationError}
             </div>
           )}
           {!authLoading && !user && (
-            <div className="mb-4 p-4 bg-teal-50 border border-teal-200 rounded-xl text-teal-800 text-sm">
+            <div className="mb-4 rounded border border-[#cbd8d0] bg-[#edf5ef] p-4 text-sm text-[#2f6a4a]">
               当前为访客模式：可浏览页面，登录后可发起对话并查看历史记录。
             </div>
           )}
@@ -1086,13 +1101,13 @@ function ChatPageContent() {
               return (
                 <div
                   key={message.id}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                    className={`max-w-[82%] rounded border px-4 py-3 ${
                       message.role === 'user'
-                        ? 'bg-slate-100 text-slate-800 rounded-br-md'
-                        : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md shadow-sm'
+                        ? 'border-[#e2e7e4] bg-[#f9faf9] text-[#303634]'
+                        : 'border-[#e2e7e4] bg-white text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]'
                     }`}
                   >
                     {message.role === 'user' ? (
@@ -1113,7 +1128,7 @@ function ChatPageContent() {
             {/* 流式阶段：先展示与成稿一致的版式骨架，不展示原始 JSON */}
             {streamingSkeletonActive && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+                <div className="max-w-[82%] rounded border border-[#e2e7e4] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
                   <CalibrationStreamingSkeleton />
                 </div>
               </div>
@@ -1122,7 +1137,7 @@ function ChatPageContent() {
             {/* 成稿 Markdown：delta 结束后由打字机效果逐段显现 */}
             {streamingContent && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+                <div className="max-w-[82%] rounded border border-[#e2e7e4] bg-white px-4 py-3 text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04)]">
                   <AIMessage 
                     content={streamingContent} 
                   />
@@ -1137,11 +1152,11 @@ function ChatPageContent() {
               !streamingSkeletonActive &&
               streamingTypeTarget === null && (
               <div className="flex justify-start">
-                <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+                <div className="rounded border border-[#e2e7e4] bg-white px-4 py-3 shadow-[0_1px_0_rgba(22,26,25,0.04)]">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-teal-400 rounded-full animate-bounce"></span>
-                    <span className="w-2 h-2 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-                    <span className="w-2 h-2 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]"></span>
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]" style={{ animationDelay: '0.1s' }}></span>
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#95a09a]" style={{ animationDelay: '0.2s' }}></span>
                   </div>
                 </div>
               </div>
@@ -1154,16 +1169,17 @@ function ChatPageContent() {
 
       {/* Input：欢迎态下先选场景或点「自己输入」后再显示 */}
       {showInputBar && (
-        <div className="border-t border-gray-200 bg-white/90 backdrop-blur-sm px-6 py-4 shrink-0">
-          <div className="max-w-3xl mx-auto">
+        <div className="shrink-0 border-t border-[#e2e7e4] bg-[#f7f8f8]/95 px-5 py-3 backdrop-blur-md">
+          <div className="mx-auto max-w-[760px]">
             <div className="flex gap-3 items-end">
               <div className="flex-1 relative">
                 <textarea
+                  ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                   placeholder={user ? '输入你的回答…' : '登录后开始对话'}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 focus:bg-white resize-none text-[15px]"
+                  className="w-full resize-none rounded border border-[#161a1938] bg-white px-4 py-3 text-[15px] text-[#161a19] focus:border-[#2f6a4a] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#2f6a4a1f]"
                   rows={1}
                   style={{ minHeight: '48px', maxHeight: '120px' }}
                   disabled={isLoading || !user}
@@ -1173,10 +1189,10 @@ function ChatPageContent() {
                 type="button"
                 onClick={() => handleSendMessage()}
                 disabled={isLoading || !user || !input.trim()}
-                className={`px-6 py-3 rounded-2xl text-white font-semibold transition-all shadow-md shadow-teal-500/20 ${
+                className={`rounded px-5 py-3 font-semibold text-white transition ${
                   isLoading || !user || !input.trim()
-                    ? 'bg-teal-300 cursor-not-allowed shadow-none'
-                    : 'bg-gradient-to-br from-teal-500 to-teal-400 hover:shadow-lg active:scale-[0.98]'
+                    ? 'cursor-not-allowed bg-[#d7dcd9] text-[#626b66]'
+                    : 'bg-[#161a19] hover:bg-[#213026]'
                 }`}
               >
                 发送

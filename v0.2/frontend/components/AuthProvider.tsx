@@ -29,6 +29,19 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const LOCAL_DEV_USER: AuthUser = {
+  id: 'local_dev_preview',
+  email: 'local-preview@questionos.dev',
+  name: '本地预览',
+};
+
+function isLocalDevAuthEnabled(): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  if (process.env.NEXT_PUBLIC_DEV_LOCAL_AUTH !== 'true') return false;
+  if (typeof window === 'undefined') return false;
+  return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+}
+
 type MeFetchFailure = Error & { readonly clearSession: boolean };
 
 function meFail(message: string, clearSession: boolean): MeFetchFailure {
@@ -88,15 +101,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    let token = localStorage.getItem('token');
-    if (
-      !token &&
-      typeof window !== 'undefined' &&
-      process.env.NEXT_PUBLIC_DEV_LOCAL_AUTH === 'true'
-    ) {
+    if (isLocalDevAuthEnabled()) {
       localStorage.setItem('token', SANDBOX_FALLBACK_TOKEN);
-      token = SANDBOX_FALLBACK_TOKEN;
+      localStorage.setItem('user', JSON.stringify(LOCAL_DEV_USER));
+      setUser(LOCAL_DEV_USER);
+      setLoading(false);
+      return;
     }
+
+    let token = localStorage.getItem('token');
     if (!token) {
       setUser(null);
       setLoading(false);
