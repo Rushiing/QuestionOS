@@ -299,9 +299,12 @@ export default function HistoryPage() {
                       <p className="text-slate-800 font-medium truncate">
                         {session.title || '未命名对话'}
                       </p>
-                      <p className="text-slate-400 text-sm mt-1">
-                        {formatDate(session.created_at)}
-                      </p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${session.mode.toUpperCase() === 'SANDBOX' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {session.mode.toUpperCase() === 'SANDBOX' ? '沙盘推演' : '思维校准'}
+                        </span>
+                        <span className="text-sm text-slate-400">{formatDate(session.created_at)}</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {!selectionMode && (
@@ -313,11 +316,11 @@ export default function HistoryPage() {
                               void hideSessions([session.id]);
                             }}
                             disabled={deleting}
-                            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
                             aria-label={`删除 ${session.title || '未命名对话'}`}
                           >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 7h12m-10 0 1 13h6l1-13m-6 0V4h4v3" />
+                            <svg className="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673A2.25 2.25 0 0 1 15.916 21H8.084a2.25 2.25 0 0 1-2.244-1.327L4.772 5.79m14.456 0A48.108 48.108 0 0 0 15.75 5.4m-10.978.39c.34-.059.68-.114 1.022-.165m0 0A48.11 48.11 0 0 1 8.25 5.4m7.5 0V4.477c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201V5.4m7.5 0a48.667 48.667 0 0 0-7.5 0" />
                             </svg>
                           </button>
                           <svg
