@@ -8,6 +8,7 @@ import { markInternalChatNav } from '../../lib/chat-nav';
 
 interface Session {
   id: string;
+  mode: string;
   title: string;
   created_at: string;
   status?: string;
@@ -42,6 +43,7 @@ export default function HistoryPage() {
       const sessions = await sandboxClient.listSessions();
       const sorted = sessions.map((s: SandboxSessionSummary) => ({
         id: s.sessionId,
+        mode: s.mode,
         title:
           (s.title && String(s.title).trim()) ||
           `${s.mode || 'UNKNOWN'} · ${s.status || 'UNKNOWN'}`,
@@ -104,9 +106,13 @@ export default function HistoryPage() {
       .map(([, g]) => [g.label, g.items]);
   };
 
-  const handleContinue = (sessionId: string) => {
+  const handleViewFull = (session: Session) => {
+    if (session.mode.toUpperCase() === 'SANDBOX') {
+      router.push(`/consult?session=${encodeURIComponent(session.id)}`);
+      return;
+    }
     markInternalChatNav();
-    router.push(`/chat?session=${sessionId}`);
+    router.push(`/chat?session=${encodeURIComponent(session.id)}`);
   };
 
   const toggleExpand = async (sessionId: string) => {
@@ -221,15 +227,6 @@ export default function HistoryPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleContinue(session.id);
-                        }}
-                        className="rounded-lg px-3 py-1.5 text-sm text-[#2f6a4a] transition-colors hover:bg-[#edf5ef]"
-                      >
-                        继续
-                      </button>
                       <svg
                         className={`w-5 h-5 text-slate-400 transition-transform ${expandedId === session.id ? 'rotate-180' : ''}`}
                         fill="none"
@@ -268,6 +265,24 @@ export default function HistoryPage() {
                             ... 还有 {session.messages.length - 6} 条消息
                           </p>
                         )}
+                        <div className="border-t border-slate-200 pt-3">
+                          <button
+                            type="button"
+                            onClick={() => handleViewFull(session)}
+                            className="inline-flex items-center gap-1.5 text-sm font-medium text-[#2f6a4a] transition-colors hover:text-[#244f39]"
+                          >
+                            查看完整记录
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              aria-hidden
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m9 5 7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <p className="text-slate-400 text-sm">加载中...</p>

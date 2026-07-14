@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AuthButton, useAuth } from '../../components/AuthButton';
@@ -185,6 +185,7 @@ function agentMarkdownSource(msg: Message): string {
 
 export default function ConsultPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
@@ -200,9 +201,11 @@ export default function ConsultPage() {
   const hasStreamActivityRef = useRef<boolean>(false);
   /** 超时插入的「本轮较慢」气泡 id；若随后收到 turn_done 则移除，避免与完整回复并存 */
   const slowRoundWarningIdRef = useRef<string | null>(null);
+  const loadedHistorySessionRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isLoggedIn = !!user;
+  const urlSessionId = searchParams.get('session');
 
   useLayoutEffect(() => {
     resizeComposer(inputRef.current);
@@ -245,14 +248,63 @@ export default function ConsultPage() {
       });
     
     // 读取从首页传入的问题
-    const storedQuestion = sessionStorage.getItem('consultQuestion');
+    const storedQuestion = urlSessionId ? null : sessionStorage.getItem('consultQuestion');
     const initialQuestion = storedQuestion?.trim();
     if (initialQuestion) {
       setInputMessage(initialQuestion);
       setPendingAutoStartQuestion(initialQuestion);
       sessionStorage.removeItem('consultQuestion');
     }
-  }, []);
+  }, [urlSessionId]);
+
+  useEffect(() => {
+    if (!urlSessionId || authLoading || !user) return;
+    if (loadedHistorySessionRef.current === urlSessionId) return;
+    loadedHistorySessionRef.current = urlSessionId;
+    let cancelled = false;
+    setSessionStarted(true);
+    setSessionId(urlSessionId);
+    setIsAgentResponding(true);
+    sandboxClient.listMessages(urlSessionId)
+      .then((history) => {
+        if (cancelled) return;
+        setMessages(history
+          .filter((message) => message.content?.trim())
+          .map((message) => {
+            const role = String(message.role).toUpperCase();
+            const agentId = message.agentSpeakerId || undefined;
+            const meta = agentMeta(agentId || '');
+            return {
+              id: message.messageId,
+              role: role === 'USER' ? 'user' as const : role === 'SYSTEM' ? 'system' as const : 'agent' as const,
+              variant: agentId === 'sandbox-classify'
+                ? 'sandbox_classify' as const
+                : agentId === 'sandbox-route'
+                  ? 'sandbox_route' as const
+                  : undefined,
+              agent_id: agentId,
+              agent_name: meta.name,
+              agent_avatar: meta.avatar,
+              content: message.content,
+            };
+          }));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Failed to load sandbox session history:', error);
+        setMessages([{
+          id: `${Date.now()}-history-error`,
+          role: 'system',
+          content: '历史会话加载失败，请稍后重试。',
+        }]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsAgentResponding(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, urlSessionId, user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -591,6 +643,8 @@ export default function ConsultPage() {
     try {
       const sid = await createSession(question);
       setSessionId(sid);
+      loadedHistorySessionRef.current = sid;
+      router.replace(`/consult?session=${encodeURIComponent(sid)}`, { scroll: false });
       const bg = takeBackgroundContext();
       const payload = bg ? wrapUserMessageWithBackground(question, bg) : question;
       await runTurn(sid, payload);
@@ -632,7 +686,9 @@ export default function ConsultPage() {
     setPendingAutoStartQuestion(null);
     setIsAgentResponding(false);
     setSessionId(null);
+    loadedHistorySessionRef.current = null;
     lastSeqRef.current = 0;
+    router.replace('/consult', { scroll: false });
   };
 
   return (

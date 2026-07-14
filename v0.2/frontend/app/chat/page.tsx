@@ -574,6 +574,7 @@ function ChatPageContent() {
   /** 欢迎态下先展示推荐场景；点此或发首条后才露出底部输入框 */
   const [composerUnlocked, setComposerUnlocked] = useState(false);
   const lastSeqRef = useRef<number>(0);
+  const loadedHistorySessionRef = useRef<string | null>(null);
 
   const showInputBar = composerUnlocked || messages.length > 0;
 
@@ -617,8 +618,13 @@ function ChatPageContent() {
     };
   }, [streamingTypeTarget]);
 
-  // 仅当不是站内跳转到 /chat 时，才回首页（覆盖刷新/直达 /chat 场景）
+  const urlSessionId = searchParams.get('session');
+
+  // 新对话仅允许站内跳转；带 session 的历史会话允许直达和刷新。
   useLayoutEffect(() => {
+    if (urlSessionId) {
+      return;
+    }
     const hasMark = sessionStorage.getItem(CHAT_INTERNAL_NAV_KEY) === '1';
     if (hasMark) {
       sessionStorage.removeItem(CHAT_INTERNAL_NAV_KEY);
@@ -629,15 +635,42 @@ function ChatPageContent() {
       return;
     }
     router.replace('/');
-  }, [router]);
+  }, [router, urlSessionId]);
 
-  // 从 URL 读取 sessionId（v1.1 状态接口不返回历史消息）
+  // 从 URL 加载历史会话全文。
   useEffect(() => {
-    const urlSessionId = searchParams.get('session');
-    if (urlSessionId) {
-      setSessionId(urlSessionId);
-    }
-  }, [searchParams]);
+    if (!urlSessionId || authLoading || !user) return;
+    if (loadedHistorySessionRef.current === urlSessionId) return;
+    loadedHistorySessionRef.current = urlSessionId;
+    let cancelled = false;
+    setSessionId(urlSessionId);
+    setShowWelcome(false);
+    setIsLoading(true);
+    setValidationError(null);
+    sandboxClient.listMessages(urlSessionId)
+      .then((history) => {
+        if (cancelled) return;
+        setMessages(history
+          .filter((message) => message.content?.trim())
+          .map((message) => ({
+            id: message.messageId,
+            role: String(message.role).toUpperCase() === 'USER' ? 'user' as const : 'assistant' as const,
+            content: message.content,
+            timestamp: new Date(message.createdAt),
+          })));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Failed to load session history:', error);
+        setValidationError('历史会话加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, urlSessionId, user]);
 
   // 更新 URL 中的 sessionId
   const updateUrlSession = (newSessionId: string) => {
@@ -674,6 +707,7 @@ function ChatPageContent() {
       if (!currentSessionId) {
         currentSessionId = await createSession(question.trim());
         setSessionId(currentSessionId);
+        loadedHistorySessionRef.current = currentSessionId;
         updateUrlSession(currentSessionId);
       }
 
@@ -709,13 +743,14 @@ function ChatPageContent() {
 
   // 加载初始问题
   useEffect(() => {
+    if (urlSessionId) return;
     const initialQuestion = sessionStorage.getItem('initialQuestion');
     if (initialQuestion) {
       setShowWelcome(false);
       sessionStorage.removeItem('initialQuestion');
       handleSendMessage(initialQuestion);
     }
-  }, []);
+  }, [urlSessionId]);
 
   const validateInput = (text: string): { valid: boolean; suggestion?: string } => {
     if (text.trim().length === 0) {
@@ -836,6 +871,7 @@ function ChatPageContent() {
       try {
         activeSessionId = await createSession(messageText.trim());
         setSessionId(activeSessionId);
+        loadedHistorySessionRef.current = activeSessionId;
         updateUrlSession(activeSessionId);
       } catch (error) {
         setIsLoading(false);
