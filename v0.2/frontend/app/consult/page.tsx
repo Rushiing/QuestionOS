@@ -950,7 +950,7 @@ export default function ConsultPage() {
               ) : (
                 <>
                   <p className="font-serif text-2xl font-medium text-[#161a19]">还没有推演议题</p>
-                  <p className="mt-3 text-sm leading-6 text-[#626b66]">沙盘推演现在从首页直接进入对话。先回首页写下议题，再选择沙盘模式开始。</p>
+                  <p className="mt-3 text-sm leading-6 text-[#626b66]">先回首页写下议题，再选择沙盘模式开始。</p>
                   <button
                     type="button"
                     onClick={() => router.push('/')}
