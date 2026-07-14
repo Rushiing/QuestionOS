@@ -47,12 +47,12 @@ input, textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #99f6e4;
+  background: #9eb8a8;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #5eead4;
+  background: #2f6a4a;
 }
 
 /* Float animation for example questions */
@@ -154,7 +154,7 @@ input, textarea {
 
 /* 引用 */
 .markdown-content blockquote {
-  border-left: 3px solid #14b8a6;
+  border-left: 3px solid #2f6a4a;
   padding-left: 1em;
   margin: 0.75em 0;
   color: #475569;
@@ -223,13 +223,13 @@ input, textarea {
 
 /* 链接 */
 .markdown-content a {
-  color: #0d9488;
+  color: #2f6a4a;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .markdown-content a:hover {
-  color: #0f766e;
+  color: #244f39;
 }
 
 /* 特殊：关键信息高亮块 */

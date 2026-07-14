@@ -46,7 +46,7 @@ function VerifyContent() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-slate-200 border-t-teal-600 rounded-full animate-spin mx-auto mb-6"></div>
+          <div className="mx-auto mb-6 h-16 w-16 animate-spin rounded-full border-4 border-slate-200 border-t-[#2f6a4a]"></div>
           <h1 className="text-2xl font-semibold text-slate-800">验证中...</h1>
         </div>
       </div>
@@ -57,8 +57,8 @@ function VerifyContent() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center px-4">
         <div className="text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#edf5ef]">
+            <svg className="h-10 w-10 text-[#2f6a4a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -90,7 +90,7 @@ function VerifyContent() {
 
 export default function VerifyPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center"><div className="w-16 h-16 border-4 border-slate-200 border-t-teal-600 rounded-full animate-spin"></div></div>}>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-white"><div className="h-16 w-16 animate-spin rounded-full border-4 border-slate-200 border-t-[#2f6a4a]"></div></div>}>
       <VerifyContent />
     </Suspense>
   );

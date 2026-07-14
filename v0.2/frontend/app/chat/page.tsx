@@ -9,7 +9,7 @@ import { sandboxClient } from '../../lib/sandbox-client';
 import { CHAT_INTERNAL_NAV_KEY } from '../../lib/chat-nav';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
 import { CHAT_RECOMMENDED_SCENARIOS } from '../../lib/recommended-scenarios';
-import { handleEnterToSubmit } from '../../lib/keyboard-ime';
+import { handleEnterToSubmit, resizeComposer } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 
 /**
@@ -61,7 +61,7 @@ const calibrationMarkdownComponents: Components = {
     if (label.includes('本轮追问')) {
       return (
         <div className="mb-3 mt-0">
-          <span className="inline-flex items-center rounded bg-[#16a79a] px-3.5 py-1.5 text-[13px] font-semibold tracking-wide text-white shadow-[0_6px_16px_rgba(22,167,154,0.18)]">
+          <span className="inline-flex items-center rounded bg-[#2f6a4a] px-3.5 py-1.5 text-[13px] font-semibold tracking-wide text-white shadow-[0_6px_16px_rgba(47,106,74,0.18)]">
             本轮追问
           </span>
         </div>
@@ -76,14 +76,14 @@ const calibrationMarkdownComponents: Components = {
   h3({ children }) {
     return (
       <h3 className="mb-2 mt-5 flex items-center gap-3 text-base font-semibold leading-snug text-[#161a19]">
-        <span className="h-4 w-1 shrink-0 rounded-full bg-[#16a79a]" aria-hidden />
+        <span className="h-4 w-1 shrink-0 rounded-full bg-[#2f6a4a]" aria-hidden />
         <span>{children}</span>
       </h3>
     );
   },
   blockquote({ children }) {
     return (
-      <blockquote className="my-3 rounded border border-[#bfe8e2] bg-[#fbfffe] px-4 py-3.5 not-italic text-[#303634]">
+      <blockquote className="my-3 rounded border border-[#cbd8d0] bg-[#f9faf9] px-4 py-3.5 not-italic text-[#303634]">
         <div className="text-[1.02rem] font-normal leading-relaxed tracking-tight text-[#303634] [&_strong]:font-normal">
           {children}
         </div>
@@ -396,18 +396,18 @@ function AlchemyMessage({ content, onContinueWithQuestion }: { content: string; 
             const codeContent = String(children);
             const isInline = !codeContent.includes('\n');
             if (isInline) {
-              return <code className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-sm font-medium" {...props}>{children}</code>;
+              return <code className="rounded bg-[#edf5ef] px-1.5 py-0.5 text-sm font-medium text-[#2f6a4a]" {...props}>{children}</code>;
             }
             return (
               <div className="relative">
-                <pre className="bg-gradient-to-r from-teal-50 to-teal-100/80 text-gray-800 p-4 rounded-xl my-3 overflow-x-auto text-sm leading-relaxed whitespace-pre-wrap border border-teal-200 shadow-sm">
+                <pre className="my-3 overflow-x-auto whitespace-pre-wrap rounded-xl border border-[#cbd8d0] bg-[#edf5ef] p-4 text-sm leading-relaxed text-gray-800 shadow-sm">
                   <code {...props}>{children}</code>
                 </pre>
               </div>
             );
           },
           blockquote({ children }) {
-            return <blockquote className="border-l-4 border-teal-400 pl-4 py-2 my-2 bg-teal-50 rounded-r-lg text-gray-700">{children}</blockquote>;
+            return <blockquote className="my-2 rounded-r-lg border-l-4 border-[#2f6a4a] bg-[#edf5ef] py-2 pl-4 text-gray-700">{children}</blockquote>;
           },
           h2({ children }) {
             return <h2 className="text-xl font-bold text-gray-800 mt-4 mb-3">{children}</h2>;
@@ -417,11 +417,11 @@ function AlchemyMessage({ content, onContinueWithQuestion }: { content: string; 
             const isRefinedTitle = titleText.includes('重构后的天才提问');
             return (
               <div className="flex items-center gap-3 mt-4 mb-2">
-                <h3 className="text-lg font-semibold text-teal-700 flex items-center gap-2">{children}</h3>
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-[#2f6a4a]">{children}</h3>
                 {isRefinedTitle && hasRefinedQuestion && refinedQuestion && onContinueWithQuestion && (
                   <button
                     onClick={() => onContinueWithQuestion(refinedQuestion)}
-                    className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md whitespace-nowrap"
+                    className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#2f6a4a] px-3 py-1 text-xs font-medium text-white shadow-sm transition-all duration-200 hover:bg-[#244f39] hover:shadow-md"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -472,7 +472,7 @@ function AIMessage({ content, onContinueWithQuestion }: { content: string; onCon
               const codeContent = String(children);
               const isInline = !codeContent.includes('\n');
               if (isInline) {
-                return <code className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-sm font-medium" {...props}>{children}</code>;
+                return <code className="rounded bg-[#edf5ef] px-1.5 py-0.5 text-sm font-medium text-[#2f6a4a]" {...props}>{children}</code>;
               }
               return <pre className="bg-gray-100 text-gray-800 p-4 rounded-xl my-3 overflow-x-auto text-sm whitespace-pre-wrap border border-gray-200"><code {...props}>{children}</code></pre>;
             },
@@ -531,11 +531,11 @@ function CalibrationStreamingSkeleton() {
   return (
     <div className="calibration-md text-sm leading-relaxed">
       <div className="mb-3 mt-0">
-        <span className="inline-flex items-center rounded bg-[#16a79a] px-3.5 py-1.5 text-[13px] font-semibold tracking-wide text-white shadow-[0_6px_16px_rgba(22,167,154,0.18)]">
+        <span className="inline-flex items-center rounded bg-[#2f6a4a] px-3.5 py-1.5 text-[13px] font-semibold tracking-wide text-white shadow-[0_6px_16px_rgba(47,106,74,0.18)]">
           本轮追问
         </span>
       </div>
-      <div className="my-3 rounded border border-[#bfe8e2] bg-[#fbfffe] px-4 py-3.5">
+      <div className="my-3 rounded border border-[#cbd8d0] bg-[#f9faf9] px-4 py-3.5">
         <div className="space-y-2.5">
           <div className="h-4 max-w-[88%] animate-pulse rounded bg-[#dce6e1]" />
           <div className="h-4 w-full animate-pulse rounded bg-[#e7eeea]" />
@@ -576,6 +576,10 @@ function ChatPageContent() {
   const lastSeqRef = useRef<number>(0);
 
   const showInputBar = composerUnlocked || messages.length > 0;
+
+  useLayoutEffect(() => {
+    resizeComposer(inputRef.current);
+  }, [input]);
 
   const prefillQuestion = (question: string) => {
     setInput(question);
@@ -1017,7 +1021,7 @@ function ChatPageContent() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden items-center gap-1.5 text-xs font-medium text-[#626b66] sm:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#16a34a] shadow-[0_0_0_3px_rgba(22,163,74,0.2)]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#2f6a4a] shadow-[0_0_0_3px_rgba(47,106,74,0.16)]" />
               在线
             </div>
             {user && (
@@ -1193,8 +1197,8 @@ function ChatPageContent() {
               !streamingSkeletonActive &&
               streamingTypeTarget === null && (
               <div className="flex justify-start">
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
+                <div className="flex w-full max-w-[min(700px,100%)] items-start gap-3">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[#161a19] font-serif text-base font-semibold text-white">
                     Q
                   </div>
                   <div className="rounded border border-[#e2e7e4] bg-white px-4 py-3 shadow-[0_1px_0_rgba(22,26,25,0.04)]">
@@ -1225,9 +1229,8 @@ function ChatPageContent() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                   placeholder={user ? '输入你的回答…' : '登录后开始对话'}
-                  className="w-full resize-none rounded border-0 bg-transparent px-3 py-2.5 text-[15px] leading-6 text-[#161a19] placeholder:text-[#95a09a] focus:outline-none"
+                  className="min-h-12 max-h-[120px] w-full resize-none overflow-hidden rounded border-0 bg-transparent px-3 py-3 text-[15px] leading-6 text-[#161a19] placeholder:text-[#95a09a] focus:outline-none"
                   rows={1}
-                  style={{ minHeight: '48px', maxHeight: '120px' }}
                   disabled={isLoading || !user}
                 />
               </div>

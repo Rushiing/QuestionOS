@@ -423,6 +423,7 @@ public class OpenClawInvokeService {
 
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
         HttpRequest.Builder rb = HttpRequest.newBuilder()
                 .uri(URI.create(url))

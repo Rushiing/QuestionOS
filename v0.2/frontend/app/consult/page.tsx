@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown, { type Components } from 'react-markdown';
@@ -9,7 +9,7 @@ import { AuthButton, useAuth } from '../../components/AuthButton';
 import { sandboxClient, type SandboxSessionMessage } from '../../lib/sandbox-client';
 import { normalizeIntegratorExpertBullets } from '../../lib/integrator-markdown';
 import { takeBackgroundContext, wrapUserMessageWithBackground } from '../../lib/background-context';
-import { handleEnterToSubmit } from '../../lib/keyboard-ime';
+import { handleEnterToSubmit, resizeComposer } from '../../lib/keyboard-ime';
 import { formatCalibrationJsonToMarkdown } from '../../lib/calibration-json-to-markdown';
 import { SANDBOX_TURN_MAX_WAIT_MS } from '../../lib/runtime-config';
 
@@ -160,7 +160,7 @@ const sandboxRouteMarkdownComponents: Components = {
   ),
 };
 
-/** 步骤① 分诊卡片：与步骤②（teal 审议路由）区分 */
+/** 步骤① 分诊卡片：与步骤②审议路由区分 */
 const sandboxClassifyMarkdownComponents: Components = {
   ...consultAgentMarkdownComponents,
   h3: ({ node, children, ...props }) => (
@@ -203,6 +203,10 @@ export default function ConsultPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isLoggedIn = !!user;
+
+  useLayoutEffect(() => {
+    resizeComposer(inputRef.current);
+  }, [inputMessage]);
 
   const defaultAgentList: Agent[] = [
     ...SANDBOX_DELIBERATION_ROOMS,
@@ -761,7 +765,7 @@ export default function ConsultPage() {
                       </div>
                     </div>
                   ) : msg.variant === 'sandbox_route' ? (
-                    <div className="w-full max-w-[720px] overflow-hidden rounded border border-[#cbd8d0] bg-[#fbfffe] text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.04)]">
+                    <div className="w-full max-w-[720px] overflow-hidden rounded border border-[#cbd8d0] bg-[#f9faf9] text-[#303634] shadow-[0_1px_0_rgba(22,26,25,0.04),0_8px_22px_rgba(22,26,25,0.04)]">
                       <div className="flex items-center justify-between gap-3 border-b border-[#d6e4dc] bg-[#edf5ef] px-4 py-3">
                         <div>
                           <p className="font-serif text-lg font-semibold leading-tight text-[#161a19]">审议路由</p>
@@ -824,7 +828,7 @@ export default function ConsultPage() {
                     onKeyDown={(e) => handleEnterToSubmit(e, () => void handleSendMessage())}
                     placeholder={isAgentResponding ? "等待专家回复..." : "继续追问或补充..."}
                     disabled={isAgentResponding}
-                    className="h-12 w-full resize-none overflow-hidden rounded border-0 bg-transparent px-3 py-3 text-[15px] leading-6 text-[#161a19] placeholder:text-[#95a09a] transition-colors focus:outline-none disabled:opacity-50"
+                    className="min-h-12 max-h-[120px] w-full resize-none overflow-hidden rounded border-0 bg-transparent px-3 py-3 text-[15px] leading-6 text-[#161a19] placeholder:text-[#95a09a] transition-colors focus:outline-none disabled:opacity-50"
                     rows={1}
                   />
                 </div>
@@ -860,9 +864,9 @@ export default function ConsultPage() {
         .consult-agent-md blockquote {
           margin: 0.75rem 0;
           padding: 0.75rem 1rem;
-          border: 1px solid #bfe8e2;
+          border: 1px solid #cbd8d0;
           border-left: 3px solid #2f6a4a;
-          background: #fbfffe;
+          background: #f9faf9;
           color: #303634;
         }
         .consult-agent-md a {

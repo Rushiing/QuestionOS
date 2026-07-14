@@ -17,14 +17,14 @@ export default function DiagnosticPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 to-white">
+      <div className="flex min-h-screen items-center justify-center bg-[#f7f8f8]">
         <div className="animate-pulse text-gray-400">加载中...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-white">
+    <div className="min-h-screen bg-[#f7f8f8]">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto px-6 py-4">
@@ -46,9 +46,9 @@ export default function DiagnosticPage() {
       <div className="max-w-4xl mx-auto px-6 py-12">
         <div className="grid gap-6">
           {/* Placeholder Card */}
-          <div className="rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 p-8 sm:p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-teal-100 mb-4">
-              <svg className="w-8 h-8 text-teal-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="rounded-2xl border-2 border-dashed border-[#cbd8d0] bg-[#edf5ef] p-8 text-center sm:p-12">
+            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#dce8e0]">
+              <svg className="h-8 w-8 animate-pulse text-[#2f6a4a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -61,17 +61,17 @@ export default function DiagnosticPage() {
           {/* Coming Soon Items */}
           <div className="grid sm:grid-cols-3 gap-4 mt-8">
             <div className="rounded-xl border border-gray-200 bg-white p-6">
-              <div className="text-2xl font-bold text-teal-600 mb-2">—</div>
+              <div className="mb-2 text-2xl font-bold text-[#2f6a4a]">—</div>
               <h3 className="font-semibold text-gray-900 text-sm mb-1">对话总数</h3>
               <p className="text-xs text-gray-500">所有已完成的沙盘推演</p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-6">
-              <div className="text-2xl font-bold text-teal-600 mb-2">—</div>
+              <div className="mb-2 text-2xl font-bold text-[#2f6a4a]">—</div>
               <h3 className="font-semibold text-gray-900 text-sm mb-1">平均深度</h3>
               <p className="text-xs text-gray-500">Round 推进平均轮数</p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-6">
-              <div className="text-2xl font-bold text-teal-600 mb-2">—</div>
+              <div className="mb-2 text-2xl font-bold text-[#2f6a4a]">—</div>
               <h3 className="font-semibold text-gray-900 text-sm mb-1">问题质量</h3>
               <p className="text-xs text-gray-500">基于溶解检测的评分</p>
             </div>

@@ -156,7 +156,7 @@ export default function HistoryPage() {
           </div>
           <button
             onClick={() => router.push('/')}
-            className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
+            className="rounded-lg bg-[#2f6a4a] px-4 py-2 text-sm text-white transition-colors hover:bg-[#244f39]"
           >
             新对话
           </button>
@@ -174,7 +174,7 @@ export default function HistoryPage() {
             <p className="text-slate-600 mb-4">历史记录加载失败，可能是网络问题</p>
             <button
               onClick={fetchSessions}
-              className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
+              className="rounded-lg bg-[#2f6a4a] px-4 py-2 text-sm text-white transition-colors hover:bg-[#244f39]"
             >
               重试
             </button>
@@ -189,7 +189,7 @@ export default function HistoryPage() {
             <p className="text-slate-500">暂无对话记录</p>
             <button
               onClick={() => router.push('/')}
-              className="mt-4 text-teal-600 hover:text-teal-700 text-sm"
+              className="mt-4 text-sm text-[#2f6a4a] hover:text-[#244f39]"
             >
               开始第一次对话 →
             </button>
@@ -226,7 +226,7 @@ export default function HistoryPage() {
                           e.stopPropagation();
                           handleContinue(session.id);
                         }}
-                        className="px-3 py-1.5 text-sm text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                        className="rounded-lg px-3 py-1.5 text-sm text-[#2f6a4a] transition-colors hover:bg-[#edf5ef]"
                       >
                         继续
                       </button>

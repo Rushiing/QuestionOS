@@ -21,7 +21,7 @@ export function AuthButton() {
     return (
       <button
         onClick={() => router.push('/login')}
-        className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors shadow-sm shadow-teal-500/20"
+        className="rounded-lg bg-[#2f6a4a] px-4 py-2 text-sm text-white shadow-sm shadow-[#2f6a4a33] transition-colors hover:bg-[#244f39]"
       >
         登录
       </button>
@@ -37,7 +37,7 @@ export function AuthButton() {
         {user.avatar ? (
           <img src={user.avatar} alt={user.name} className="w-6 h-6 rounded-full object-cover" />
         ) : (
-          <div className="w-6 h-6 bg-teal-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f6a4a] text-xs font-medium text-white">
             {user.name.charAt(0).toUpperCase()}
           </div>
         )}

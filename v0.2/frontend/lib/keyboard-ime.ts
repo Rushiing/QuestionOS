@@ -19,3 +19,10 @@ export function handleEnterToSubmit(e: ReactKeyboardEvent, submit: () => void): 
   e.preventDefault();
   submit();
 }
+
+/** 对话输入框从单行起步自动增高，避免显示原生滚动条。 */
+export function resizeComposer(el: HTMLTextAreaElement | null, maxHeight = 120): void {
+  if (!el) return;
+  el.style.height = '48px';
+  el.style.height = `${Math.min(Math.max(el.scrollHeight, 48), maxHeight)}px`;
+}

@@ -33,7 +33,7 @@ export default function LoginPage() {
 
           <p className="text-center text-slate-500 text-sm mt-6">
             还没有账号？{' '}
-            <a href="/register" className="text-teal-600 hover:text-teal-700 font-medium">
+            <a href="/register" className="font-medium text-[#2f6a4a] hover:text-[#244f39]">
               立即注册
             </a>
           </p>

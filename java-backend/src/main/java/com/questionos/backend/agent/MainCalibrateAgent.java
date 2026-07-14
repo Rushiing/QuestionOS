@@ -212,11 +212,51 @@ public class MainCalibrateAgent implements AgentExecutor {
                                 md == null ? 0 : md.length());
                         return new AgentReplyChunk("agent_chunk", md);
                     }))
-                    .onErrorResume(e -> Flux.fromIterable(List.of(
-                                    new AgentReplyChunk("agent_error", formatInvokeFailureMessage(e)),
-                                    new AgentReplyChunk("agent_chunk", formatCalibrationJson(FALLBACK_JSON))
-                            ))
-                            .delayElements(Duration.ofMillis(80)));
+                    .onErrorResume(e -> {
+                        if (rawAcc.length() > 0) {
+                            return Flux.fromIterable(List.of(
+                                            new AgentReplyChunk("agent_error", formatInvokeFailureMessage(e)),
+                                            new AgentReplyChunk("agent_chunk", formatCalibrationJson(FALLBACK_JSON))
+                                    ))
+                                    .delayElements(Duration.ofMillis(80));
+                        }
+                        log.warn(
+                                "main-calibrate stream failed before first delta; fallback to non-stream stage={} err={}",
+                                stage,
+                                e.toString());
+                        return invokeService
+                                .invokeDefaultLlmCompact(
+                                        CALIBRATION_PROMPT,
+                                        userPayload,
+                                        stage + "|nonstream-fallback",
+                                        -1,
+                                        -1)
+                                .map(raw -> {
+                                    long tf = System.currentTimeMillis();
+                                    String md = formatCalibrationJson(raw);
+                                    long formatMarkdownMs = System.currentTimeMillis() - tf;
+                                    log.info(
+                                            "main-calibrate fallback formatMarkdown stage={} formatMarkdownMs={} rawModelChars={} markdownChars={}",
+                                            stage,
+                                            formatMarkdownMs,
+                                            raw == null ? 0 : raw.length(),
+                                            md == null ? 0 : md.length());
+                                    return md;
+                                })
+                                .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
+                                .onErrorResume(fallbackError -> {
+                                    log.warn(
+                                            "main-calibrate non-stream fallback failed stage={} streamErr={} fallbackErr={}",
+                                            stage,
+                                            e.toString(),
+                                            fallbackError.toString());
+                                    return Flux.fromIterable(List.of(
+                                                    new AgentReplyChunk("agent_error", formatInvokeFailureMessage(e)),
+                                                    new AgentReplyChunk("agent_chunk", formatCalibrationJson(FALLBACK_JSON))
+                                            ))
+                                            .delayElements(Duration.ofMillis(80));
+                                });
+                    });
         }
 
         return invokeService.invokeDefaultLlm(CALIBRATION_PROMPT, userPayload, stage)
