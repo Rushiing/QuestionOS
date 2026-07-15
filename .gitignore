@@ -3,6 +3,7 @@
 
 # Build outputs / archives
 dist/
+output/
 *.tar.gz
 *.zip
 *.jar
@@ -17,6 +18,7 @@ java-backend/data/
 **/node_modules/
 **/.next/
 **/*.tsbuildinfo
+.qos-fixtures.json
 
 # Local env / secrets
 **/.env
