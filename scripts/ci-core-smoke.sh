@@ -48,6 +48,7 @@ QOS_FIXTURE_TOKEN=ci-smoke-token node scripts/questionos-fixtures.mjs seed
 QOS_FIXTURE_TOKEN=ci-smoke-token node scripts/questionos-fixtures.mjs status
 QOS_FIXTURE_TOKEN=ci-smoke-token node scripts/questionos-fixtures.mjs seed
 QOS_FIXTURE_TOKEN=ci-smoke-token node scripts/questionos-fixtures.mjs clean
+python3 scripts/questionos-mock-check.py
 
 if QOS_EVAL_URL=https://production.invalid \
   QOS_EVAL_TOKEN=guard-test \

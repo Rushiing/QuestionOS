@@ -17,6 +17,14 @@
 
 Fixture 只写稳定契约，不固定模型措辞。
 
+Legacy Mock 也有一条无网络、无数据库写入的确定性检查：
+
+```bash
+python3 scripts/questionos-mock-check.py
+```
+
+该命令验证重复调用结果一致，以及 OpenAI chat-completions 响应外形；基础 CI 会执行它。它只保护 `v0.2/server.py` 的 legacy 演示路径，不替代 Java Agent 验收。
+
 ## 本地 Seed / 清理
 
 启动 Java + frontend 后：
