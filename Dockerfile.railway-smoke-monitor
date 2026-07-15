@@ -1,0 +1,14 @@
+# Railway smoke monitor service. Build from repo root with:
+# RAILWAY_DOCKERFILE_PATH=Dockerfile.railway-smoke-monitor
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY scripts/questionos-smoke-check.mjs ./scripts/questionos-smoke-check.mjs
+COPY scripts/questionos-smoke-monitor.mjs ./scripts/questionos-smoke-monitor.mjs
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+CMD ["node", "scripts/questionos-smoke-monitor.mjs"]

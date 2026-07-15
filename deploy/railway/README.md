@@ -1,9 +1,10 @@
 # QuestionOS Railway 快速部署
 
-本方案采用两个 Railway Service（推荐用仓库根的 `Dockerfile.railway-*`，避免 Railpack 误判）：
+本方案采用三个 Railway Service + Postgres（推荐用仓库根的 `Dockerfile.railway-*`，避免 Railpack 误判）：
 
 - 后端：`Dockerfile.railway-backend`
 - 前端：`Dockerfile.railway-frontend`
+- 巡检：`Dockerfile.railway-smoke-monitor`
 
 ## 1. 准备仓库
 
@@ -84,10 +85,34 @@ NEXT_PUBLIC_SANDBOX_TOKEN=<same-as-backend-token>
 
 ## 5. 冒烟测试
 
-1. 打开前端 `consult` 页面，发起会话。
-2. 能创建 session，且收到 SSE 流式回复，说明主链路正常。
-3. 若报 401，检查前后端 token 是否一致。
-4. 若报 CORS，检查 `QUESTIONOS_ALLOWED_ORIGINS` 是否包含当前前端 origin（协议 + 域名 + 端口）。若控制台写「预检无 `Access-Control-Allow-Origin`」但 **`curl` 公网域名是 502**，先修 502（见下），不要先纠结 CORS。
+无生产写入的高频巡检：
+
+```bash
+QOS_FRONTEND_URL=https://<frontend-domain> \
+QOS_BACKEND_URL=http://<backend-private-host>.railway.internal:8080 \
+node scripts/questionos-smoke-check.mjs
+```
+
+只有低频或人工验收时才设置 `QOS_SMOKE_TOKEN` + `QOS_SMOKE_CREATE_SESSION=1`，验证 session 创建和 SSE replay。`QOS_SMOKE_RUN_LLM_TURN=1` 会产生真实模型调用，不得进入高频基础巡检。
+
+smoke-monitor 变量：
+
+```bash
+RAILWAY_DOCKERFILE_PATH=Dockerfile.railway-smoke-monitor
+QOS_FRONTEND_URL=https://<frontend-domain>
+QOS_BACKEND_URL=http://<backend-private-host>.railway.internal:8080
+QOS_MONITOR_INTERVAL_MS=60000
+QOS_MONITOR_STALE_AFTER_MS=180000
+QOS_MONITOR_FAILURE_THRESHOLD=1
+```
+
+Railway 平台 healthcheck 使用 `/ready`；巡检目标异常由 `/health` 返回 503，不应因此反复重启 monitor。
+
+1. 分别确认 frontend、backend、Postgres、smoke-monitor 的 deployment 和健康状态。
+2. 打开前端 `consult` 页面，发起会话。
+3. 能创建 session，且收到 SSE 流式回复，说明主链路正常。
+4. 若报 401，检查前后端 token 是否一致。
+5. 若报 CORS，检查 `QUESTIONOS_ALLOWED_ORIGINS` 是否包含当前前端 origin（协议 + 域名 + 端口）。若控制台写「预检无 `Access-Control-Allow-Origin`」但 **`curl` 公网域名是 502**，先修 502（见下），不要先纠结 CORS。
 
 ## 常见问题
 

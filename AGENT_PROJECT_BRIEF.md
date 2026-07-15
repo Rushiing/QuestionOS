@@ -177,6 +177,8 @@ npm run dev
 - 健康：`GET /actuator/health`
 - 指标：`GET /actuator/prometheus`
 - 部署参考：`deploy/railway/README.md`、`deploy/alinux/README.md`
+- 交付规范：`docs/DELIVERY_WORKFLOW.md`（分支 / worktree、风险分级、CI、Railway 分服务验收与 truth-sync）
+- 常驻巡检：`Dockerfile.railway-smoke-monitor` + `scripts/questionos-smoke-monitor.mjs`。高频巡检默认不创建 session；只有显式设置 `QOS_SMOKE_CREATE_SESSION=1` 才验证 session + SSE replay。
 
 ---
 
