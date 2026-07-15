@@ -16,6 +16,7 @@ java-backend/data/
 # Node / Next build
 **/node_modules/
 **/.next/
+**/*.tsbuildinfo
 
 # Local env / secrets
 **/.env
@@ -25,7 +26,9 @@ java-backend/data/
 # Python venv（勿提交）
 **/venv/
 **/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/*.py[cod]
 
 # Logs
 **/*.log
-
