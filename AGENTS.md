@@ -10,7 +10,7 @@
 
 **GitHub**：`Rushiing/QuestionOS`
 **部署**：Railway（`questionos-app.up.railway.app/`）
-**最新 commit 锚点**：`4968f64 docs: 添加 AGENT_PROJECT_BRIEF 供外部 Agent 与协作者上手`
+**版本锚点**：不要在长期文档写死 commit；用 `git log -1 --oneline` 与 Railway deployment metadata 核对。
 
 ## 技术栈
 
@@ -55,6 +55,7 @@ npm run dev                # http://127.0.0.1:3000
 ### 后端服务（Java）
 - 连接 GitHub `Rushiing/QuestionOS`
 - **Root Directory 留空**（不要填 `java-backend`）
+- Config as Code：`/railway.backend.json`
 - 关键 Variables：
   ```
   RAILWAY_DOCKERFILE_PATH=Dockerfile.railway-backend
@@ -64,14 +65,14 @@ npm run dev                # http://127.0.0.1:3000
   QUESTIONOS_LLM_API_KEY=<your-llm-api-key>
   QUESTIONOS_LLM_MODEL=<your-model-name>
   ```
-- Healthcheck：`/actuator/health`，超时 ≥ 120s（Java 冷启动）
+- Healthcheck：`/actuator/health/liveness`，超时 300s（Java 冷启动）
 - 思维校准追问易超时，默认 240s，需要可改 300～420（`QUESTIONOS_LLM_TIMEOUT_SECONDS`）
 
 ### 前端服务（Next.js）
-- 同仓库新建 service，Root Directory 留空
+- 同仓库 service，Root Directory：`/v0.2/frontend`
+- Config as Code：`/v0.2/frontend/railway.json`
 - 关键 Variables：
   ```
-  RAILWAY_DOCKERFILE_PATH=Dockerfile.railway-frontend
   INTERNAL_API_URL=http://questionos.railway.internal:8080
   # NEXT_PUBLIC_API_URL 生产留空/不设；浏览器走同源 /api
   NEXT_PUBLIC_API_VERSION=1.1
@@ -139,3 +140,5 @@ npm run dev                # http://127.0.0.1:3000
 - 基础 CI 不调用真实 OAuth、真实 LLM 或生产数据。
 - 合并 `main`、修改 GitHub 门禁、修改 Railway 配置 / Variables、生产数据操作和删除资源必须由用户确认。
 - Railway 验收必须分别检查 frontend、backend、Postgres 和 smoke-monitor，再走真实用户路径。
+- Railway 当前配置、watch paths、release evidence 与回滚以 `deploy/railway/README.md` 为准。
+- Prompt/Mock/Seed/Summary 的支持边界与命令以 `docs/PROMPT_QUALITY_WORKFLOW.md` 为准；真实 LLM eval 不进入 required CI。

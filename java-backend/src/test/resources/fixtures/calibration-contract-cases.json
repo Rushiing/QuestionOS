@@ -1,0 +1,62 @@
+[
+  {
+    "id": "scenario-confirm",
+    "payload": {
+      "calibration_mode": "decision",
+      "phase": "scenario_confirm",
+      "scenario_echo": "你在稳定与成长之间取舍。",
+      "questions": ["我理解的是这个取舍吗？"],
+      "reasoning": "先确认场景。"
+    },
+    "expectedPhaseLabel": "场景确认",
+    "expectedQuestion": "我理解的是这个取舍吗？"
+  },
+  {
+    "id": "language-clarify",
+    "payload": {
+      "calibration_mode": "decision",
+      "phase": "language_clarify",
+      "fuzzy_focus": "稳定",
+      "questions": ["你说的稳定具体指收入、节奏还是可预期性？"],
+      "reasoning": "拆开模糊词。"
+    },
+    "expectedPhaseLabel": "语言澄清",
+    "expectedQuestion": "你说的稳定具体指收入、节奏还是可预期性？"
+  },
+  {
+    "id": "polanyi",
+    "payload": {
+      "calibration_mode": "decision",
+      "phase": "polanyi",
+      "questions": ["哪一种结果是你最不能接受的？"],
+      "polanyi_strategy": "negative",
+      "reasoning": "用反面偏好打开默会判断。"
+    },
+    "expectedPhaseLabel": "默会兜底",
+    "expectedQuestion": "哪一种结果是你最不能接受的？"
+  },
+  {
+    "id": "synthesis",
+    "payload": {
+      "calibration_mode": "decision",
+      "phase": "synthesis",
+      "questions": ["这是你当下的真实判断吗？"],
+      "user_conclusion_mirror": "你愿意先做可回滚的小实验。",
+      "reasoning": "确认结论来自用户。"
+    },
+    "expectedPhaseLabel": "结论回放",
+    "expectedQuestion": "这是你当下的真实判断吗？",
+    "expectedMirror": "你愿意先做可回滚的小实验。"
+  },
+  {
+    "id": "action-anchor",
+    "payload": {
+      "calibration_mode": "decision",
+      "phase": "action_anchor",
+      "questions": ["接下来你打算先做哪一步？"],
+      "reasoning": "把已确认判断锚到下一步。"
+    },
+    "expectedPhaseLabel": "下一步",
+    "expectedQuestion": "接下来你打算先做哪一步？"
+  }
+]

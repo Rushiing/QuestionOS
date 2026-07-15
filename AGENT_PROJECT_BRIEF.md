@@ -174,11 +174,14 @@ npm run dev
 
 ## 10. 观测与运维
 
-- 健康：`GET /actuator/health`
+- 后端平台健康：`GET /actuator/health/liveness`；依赖健康与人工验收：`GET /actuator/health`
 - 指标：`GET /actuator/prometheus`
 - 部署参考：`deploy/railway/README.md`、`deploy/alinux/README.md`
 - 交付规范：`docs/DELIVERY_WORKFLOW.md`（分支 / worktree、风险分级、CI、Railway 分服务验收与 truth-sync）
 - 常驻巡检：`Dockerfile.railway-smoke-monitor` + `scripts/questionos-smoke-monitor.mjs`。高频巡检默认不创建 session；只有显式设置 `QOS_SMOKE_CREATE_SESSION=1` 才验证 session + SSE replay。
+- 生产四资源：`frontend`（GitHub，root `/v0.2/frontend`）、`backend`（GitHub，root `/`）、`Postgres`（Railway image + volume）、`smoke-monitor`（GitHub，root `/`）。四项必须分别验收。
+- 发布证据：`scripts/questionos-release-evidence.mjs` 核对 merge commit、三个 GitHub service deployment、Postgres 连通和线上 smoke。
+- Prompt 质量：`docs/PROMPT_QUALITY_WORKFLOW.md`；legacy Python/mock 不代表生产 Java Agent。
 
 ---
 
@@ -189,6 +192,7 @@ npm run dev
 3. **幂等与 SSE**：消息提交依赖 `Idempotency-Key`；流式端注意 `Last-Event-ID` 与事件 envelope 结构（`StreamEvent` + JSON）。
 4. **文档漂移**：修改 API 或 SSE 契约时，同步更新 `java-backend/README.md` 或本文件；**不要**假设 `v0.2/README.md` 的 Python 结构仍存在。
 5. **编译**：`mvn -DskipTests compile` 为 Java 侧最低自检。
+6. **质量分层**：deterministic fixture/contract tests 进入基础 CI；真实 OAuth、真实 LLM、生产 seed/重跑只在用户确认后低频执行。
 
 ---
 

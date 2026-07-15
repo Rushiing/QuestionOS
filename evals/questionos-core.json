@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "suite": "questionos-core-calibration",
+  "promptVersion": "calibration-decision-v1",
+  "cases": [
+    {
+      "id": "calibration-tradeoff",
+      "mode": "CALIBRATION",
+      "input": "我在稳定的工作和一个更有成长性的机会之间犹豫，最担心选错后无法回头。",
+      "requiredFragments": ["## 本轮追问", "### 阶段"],
+      "forbiddenFragments": ["你应该", "这很正常"]
+    },
+    {
+      "id": "calibration-fuzzy-word",
+      "mode": "CALIBRATION",
+      "input": "我觉得现在的方向不够对，但我也说不清楚这里的“不对”到底是什么。",
+      "requiredFragments": ["## 本轮追问", "### 阶段"],
+      "forbiddenFragments": ["你应该", "建议你直接"]
+    },
+    {
+      "id": "calibration-action-anchor",
+      "mode": "CALIBRATION",
+      "input": "我已经决定先做一个两周可回滚的小实验，现在只差把第一步说清楚。",
+      "requiredFragments": ["## 本轮追问", "### 阶段"],
+      "forbiddenFragments": ["你应该", "这很正常"]
+    }
+  ]
+}

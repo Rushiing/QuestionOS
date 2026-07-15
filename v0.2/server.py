@@ -40,6 +40,8 @@ from socketserver import ThreadingMixIn
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
+from mock_response import mock_chat_response as build_mock_chat_response
+
 # 导入数据库模块
 try:
     import db as database
@@ -725,20 +727,7 @@ class ProxyHandler(SimpleHTTPRequestHandler):
     
     def mock_chat_response(self, messages):
         """Mock 响应"""
-        last_user_msg = ""
-        for msg in reversed(messages):
-            if msg.get('role') == 'user':
-                last_user_msg = msg.get('content', '')
-                break
-        
-        responses = [
-            "这个问题涉及哪些关键利益相关者？他们的诉求分别是什么？",
-            "如果能完美解决这个问题，6个月后的情况会是什么样？",
-            "目前阻碍你做决定的最大顾虑是什么？",
-        ]
-        idx = len(last_user_msg) % len(responses)
-        
-        return {'choices': [{'message': {'content': responses[idx]}}]}
+        return build_mock_chat_response(messages)
     
     def call_ai(self, messages):
         """非流式调用 AI"""
