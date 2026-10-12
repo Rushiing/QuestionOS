@@ -9,15 +9,15 @@
 - `SANDBOX` — Agora 沙盘多角色审议（首轮含步骤①分诊卡片 + 步骤②审议路由卡片）
 
 **GitHub**：`Rushiing/QuestionOS`
-**部署**：Railway（`questionos-app.up.railway.app/`）
-**版本锚点**：不要在长期文档写死 commit；用 `git log -1 --oneline` 与 Railway deployment metadata 核对。
+**部署**：阿里云 Pre-RICH，正式入口 `https://questionos.daydreamer.world`；现役状态见 `deploy/aliyun/cutover-plan-20261009.md`。
+**版本锚点**：不要在长期文档写死 commit；同时核对 Git 状态、实际运行镜像和发布证据；存在未提交部署改动时不能只报 HEAD。
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
 | 主后端 | Java 21、Spring Boot 3.3、WebFlux（响应式）、Maven |
-| 主前端 | Next.js 14（App Router）、TypeScript、Tailwind、Zustand、Axios |
+| 主前端 | Next.js 15.5.27（App Router）、TypeScript、Tailwind、Zustand、Axios |
 | LLM | OpenAI 兼容 `POST .../chat/completions`（环境变量注入） |
 | 存储 | 本地：JSON 快照（`spring.profiles.active=local`）；生产：PostgreSQL + Flyway |
 
@@ -50,7 +50,7 @@ npm run dev                # http://127.0.0.1:3000
 - API 代理：`app/api/[[...path]]/route.ts` 反代到后端（开发指向 `http://127.0.0.1:8080`）
 - `lib/api.ts` / `lib/runtime-config.ts` 中 `SANDBOX_FALLBACK_TOKEN` 与后端 sandbox token 对齐
 
-## Railway 部署
+## 原 Railway 配置（历史回滚参考，应用已停用）
 
 ### 后端服务（Java）
 - 连接 GitHub `Rushiing/QuestionOS`
@@ -139,6 +139,6 @@ npm run dev                # http://127.0.0.1:3000
 - PR 必须标明 `low` / `medium` / `high` 风险、验证证据、部署范围和回滚方式。
 - 基础 CI 不调用真实 OAuth、真实 LLM 或生产数据。
 - 合并 `main`、修改 GitHub 门禁、修改 Railway 配置 / Variables、生产数据操作和删除资源必须由用户确认。
-- Railway 验收必须分别检查 frontend、backend、Postgres 和 smoke-monitor，再走真实用户路径。
-- Railway 当前配置、watch paths、release evidence 与回滚以 `deploy/railway/README.md` 为准。
+- 阿里云验收分别检查 frontend、backend、Postgres、smoke-monitor 与正式域名，再走真实用户路径。
+- 现役发布与回滚见 `deploy/aliyun/cutover-plan-20261009.md`；`deploy/railway/README.md` 仅保留原平台历史。
 - Prompt/Mock/Seed/Summary 的支持边界与命令以 `docs/PROMPT_QUALITY_WORKFLOW.md` 为准；真实 LLM eval 不进入 required CI。

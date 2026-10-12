@@ -6,6 +6,7 @@ import com.questionos.backend.domain.SessionMode;
 import com.questionos.backend.integrations.OpenClawInvokeService;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -19,6 +20,7 @@ import java.util.Optional;
  */
 @Service
 public class AgentOrchestrator {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AgentOrchestrator.class);
     /** 首轮用户议题写入 prompt 的上限，避免撑爆上下文 */
     private static final int SANDBOX_CORE_TOPIC_MAX_CHARS = 1200;
 
@@ -73,25 +75,31 @@ public class AgentOrchestrator {
         String done = b.displayName() + " 发言结束。";
         if (b.slot() == SandboxSlot.INTEGRATOR) {
             // 整合官位双模式：终局报告 vs 中场小结。
-            // 收束时机三选一满足即终局：共识门 HIGH / 已进入第二圈（lap>=1）/ 用户明确要求收束；
+            // 用户明确要求中场/暂不收束时优先继续审议；否则三选一满足即终局：共识门 HIGH / 已进入第二圈（lap>=1）/ 用户明确要求收束；
             // 否则只出中场小结，把审议引向第二圈交叉审查（修复"第一圈刚完就甩终局报告"的仓促感）。
             List<String> lapAnalyses = lapAnalysesForGate(prior);
             int lap = sandboxRoundIndex >= 0 && cycleLen > 0 ? sandboxRoundIndex / cycleLen : 0;
+            boolean wantsInterim = userRequestedInterim(latestUser);
             boolean userWantsClose = userRequestedCloseout(latestUser);
+            if (wantsInterim) {
+                String interimSys = "本轮展示名：" + b.displayName() + "。\n\n" + SandboxBuiltInPrompts.INTERIM_SYNTHESIS;
+                return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), interimSys,
+                        buildInterimUserMessage(prior, latestUser, scene, null), done, history);
+            }
             if (lapAnalyses.isEmpty()) {
                 String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, null);
-                return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
+                return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done, history);
             }
             return adaptiveDepthGate.assessAsync(lapAnalyses)
                     .flatMapMany(assessment -> {
                         boolean closeOut = userWantsClose || lap >= 1 || assessment.isHighConsensus();
                         if (closeOut) {
                             String userMsg = buildIntegratorUserMessage(prior, latestUser, scene, phaseBlock, assessment);
-                            return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done);
+                            return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), sys, userMsg, done, history);
                         }
-                        String interimSys = b.personaPrefix().trim() + "\n\n" + SandboxBuiltInPrompts.INTERIM_SYNTHESIS;
+                        String interimSys = "本轮展示名：" + b.displayName() + "。\n\n" + SandboxBuiltInPrompts.INTERIM_SYNTHESIS;
                         String interimMsg = buildInterimUserMessage(prior, latestUser, scene, assessment);
-                        return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), interimSys, interimMsg, done);
+                        return oneSpeakerWithDefaultLlm(speakerId, b.displayName(), interimSys, interimMsg, done, history);
                     });
         }
         return oneSpeakerWithDefaultLlm(
@@ -99,7 +107,7 @@ public class AgentOrchestrator {
                 b.displayName(),
                 sys,
                 buildAttackerUserMessage(prior, latestUser, scene, phaseBlock),
-                done
+                done, history
         );
     }
 
@@ -121,7 +129,7 @@ public class AgentOrchestrator {
             case INTEGRATOR -> SandboxBuiltInPrompts.INTEGRATOR;
             default -> SandboxBuiltInPrompts.AUDITOR;
         };
-        return b.personaPrefix().trim() + "\n\n" + base;
+        return "本轮展示名：" + b.displayName() + "。这是分析视角，不模仿真实人物的口吻。\n\n" + base;
     }
 
     /**
@@ -141,7 +149,7 @@ public class AgentOrchestrator {
             return """
                     ## 本轮审议阶段：综合裁决（首席整合官）
 
-                    先从下文「前序观点速览」中挑出**张力最大的一对主张**，用各半句点明这组「正题 / 反题」（点名出处），再按既定 Markdown 输出；博弈复盘三条须能看出与该张力对应。
+                    先核对用户原话，再汇总有依据的判断与尚待验证的假设；存在真实分歧时点名出处，不为凑齐对立观点而制造争论。
                     """;
         }
         int lap = sandboxRoundIndex / cycleLen;
@@ -157,9 +165,9 @@ public class AgentOrchestrator {
         return """
                 ## 本轮审议阶段：交叉审查（辩证）
 
-                - 从下文「前序观点速览」表中**选定至少一位**参与者（用其展示名点名），针对其**一条具体论断**表明赞成或反对，并给出你的理由或反例。
-                - 选靶标准：选与你角色立场**张力最大**的那条主张，而不是最容易附和的。
-                - 用 1 句话给出合题取向：在什么前提下双方可部分同时成立。
+                - 从下文「前序完整发言」中核对一条与本轮问题相关的判断。必要时点名出处；无需强行反对，也不要把其他角色的观点称为用户观点。
+                - 若前序判断缺少用户证据，直接指出缺口；不制造用户未表达的动机、前提或观点。
+                - 用一句条件判断说明下一步需要什么证据；没有实质分歧就直接推进验证。
                 - 为完成论证，总字数允许在约 320 字内，仍以可验证的追问或行动收口。
                 """;
     }
@@ -181,11 +189,33 @@ public class AgentOrchestrator {
             String displayName,
             String systemPrompt,
             String userMessage,
-            String doneLine
+            String doneLine,
+            List<ConversationMessage> history
     ) {
+        if (!"integrator".equals(speakerId) || !systemPrompt.contains("中场主持人")) {
+            String roleInput = userMessage + GroundedRoleReply.sourceIndex(history);
+            return Flux.just(new AgentReplyChunk("agent_start", speakerId + "|" + displayName))
+                    .concatWith(groundedRole(speakerId, roleInput, history, false)
+                            .map(text -> new AgentReplyChunk("agent_chunk", text))
+                            .flux()
+                            .onErrorResume(e -> Flux.just(
+                                    new AgentReplyChunk("agent_error", "本轮回答未通过可验证性检查"),
+                                    new AgentReplyChunk("agent_chunk", "本轮回答未通过来源或数量检查，暂不发布推演结论。请保留当前问题，稍后重试。"))))
+                    .concatWithValues(new AgentReplyChunk("agent_done", doneLine));
+        }
         return Flux.just(new AgentReplyChunk("agent_start", speakerId + "|" + displayName))
                 .concatWith(
-                        invokeService.invokeDefaultLlm(systemPrompt, userMessage)
+                        invokeService.invokeDefaultLlm(systemPrompt + "\n\n" + SandboxBuiltInPrompts.EVIDENCE_RULES, userMessage
+                                        + "\n\n## 本轮用户原话（本次必须回应；更正优先于历史）\n"
+                                        + latestUserMessage(history), "sandbox:deliberation")
+                                .flatMap(draft -> invokeService.invokeDefaultLlm(
+                                        SandboxBuiltInPrompts.EVIDENCE_REVIEW
+                                                + ("integrator".equals(speakerId) && !systemPrompt.contains("中场主持人")
+                                                ? "\n最终报告必须遵守：\n" + SandboxBuiltInPrompts.INTEGRATOR : "")
+                                                + "\n本轮输出任务（程序确定）："
+                                                + (systemPrompt.contains("中场主持人") ? "中场小结"
+                                                : "integrator".equals(speakerId) ? "最终整合报告" : "角色分析与交叉审查"),
+                                        evidenceReviewInput(history, draft), "sandbox:evidence-review"))
                                 .flatMapMany(text -> Flux.just(new AgentReplyChunk("agent_chunk", text)))
                                 .onErrorResume(e -> Flux.just(
                                         new AgentReplyChunk("agent_error", "调用失败: " + e.getMessage()),
@@ -194,6 +224,43 @@ public class AgentOrchestrator {
                 )
                 .concatWithValues(new AgentReplyChunk("agent_done", doneLine))
                 .delayElements(Duration.ofMillis(80));
+    }
+
+    private Mono<String> groundedRole(String speakerId, String input, List<ConversationMessage> history, boolean repaired) {
+        boolean report = "integrator".equals(speakerId);
+        return invokeService.invokeDefaultLlm(report ? GroundedReport.PROMPT : GroundedRoleReply.systemPrompt(speakerId), input,
+                        report ? "sandbox:grounded-report" : "sandbox:grounded-role")
+                .flatMap(raw -> {
+                    try {
+                        return Mono.just(report ? GroundedReport.render(raw, history) : GroundedRoleReply.render(raw, history));
+                    } catch (IllegalArgumentException invalid) {
+                        log.warn("Grounded role validation failed speaker={} repaired={}", speakerId, repaired);
+                        if (repaired) {
+                            try {
+                                return Mono.just(report ? GroundedReport.render(raw, history, true)
+                                        : GroundedRoleReply.render(raw, history, true));
+                            } catch (IllegalArgumentException malformed) {
+                                return Mono.error(malformed);
+                            }
+                        }
+                        return groundedRole(speakerId, input + "\n上次未发布的输出（必须修正，不能当作证据）：\n" + raw
+                                + "\n上次输出未通过程序校验：" + invalid.getMessage()
+                                + "\n请重新生成，满足JSON字段和数量约束。", history, true);
+                    }
+                });
+    }
+
+    static String evidenceReviewInput(List<ConversationMessage> history, String draft) {
+        StringBuilder input = new StringBuilder("## 用户原话（唯一事实来源，按时间顺序）\n");
+        for (ConversationMessage message : history) {
+            if (message.role() == MessageRole.USER && message.content() != null) {
+                input.append("\n---\n").append(message.content());
+            }
+        }
+        return input.append("\n\n## 待校对草稿（模型生成，可能含错误）\n")
+                .append(draft)
+                .append("\n\n## 最新用户原话（更正优先于历史；逐句检查草稿是否违背本条）\n")
+                .append(latestUserMessage(history)).toString();
     }
 
     private static String fallbackLine(String speakerId) {
@@ -351,7 +418,7 @@ public class AgentOrchestrator {
                 t = t.substring(0, USER_FACTS_ITEM_MAX_CHARS) + "…";
             }
             if (pendingQuestion != null) {
-                facts.add("（回应 " + pendingAsker + " 的追问「" + pendingQuestion + "」）" + t);
+                facts.add("（前一轮 " + pendingAsker + " 的追问为「" + pendingQuestion + "」，不代表用户认可其前提）" + t);
             } else {
                 facts.add(t);
             }
@@ -401,8 +468,8 @@ public class AgentOrchestrator {
                 if (q == null) {
                     return null;
                 }
-                return "> 注意：这句话是在回答 " + displayNameForSpeakerId(m.agentSpeakerId(), scene)
-                        + " 的追问「" + q + "」——解读时必须带上该追问的完整语境（尤其是其中的假设前提）；"
+                return "> 前一轮 " + displayNameForSpeakerId(m.agentSpeakerId(), scene)
+                        + " 的追问是「" + q + "」。本轮可能回应此问题，也可能补充新信息或改变任务；不能自动认定为回答或认可其前提。"
                         + "用户对**假设情境**的选择不等于改变其已确认的当下行动。";
             }
         }
@@ -484,7 +551,6 @@ public class AgentOrchestrator {
         String phase = phaseBlock == null ? "" : phaseBlock.trim();
         String core = truncateCoreTopic(firstUserIssue(prior, latestUser));
         String latest = latestUser == null ? "" : latestUser.trim();
-        String claimsTable = formatPriorClaimsTable(prior, scene);
         String agents = formatPriorAgents(prior, scene);
         StringBuilder sb = new StringBuilder();
         sb.append(routing).append("\n\n");
@@ -495,7 +561,7 @@ public class AgentOrchestrator {
         sb.append("## 用户核心议题（整场沙盘须围绕此议题，禁止空泛套话）\n\n")
                 .append(core.isEmpty() ? "（用户尚未说明具体议题）" : core);
         if (!userFacts.isEmpty()) {
-            sb.append("\n\n## 用户在审议中已补充的事实（按时间序，这些是用户的真实处境，分析与追问必须建立在其上）\n\n")
+            sb.append("\n\n## 用户在审议中的原话（按时间序；区分事实、意愿与假设回答，不代表确认了追问的前提）\n\n")
                     .append(userFacts);
         }
         sb.append("\n\n## 本轮用户最新发言\n\n")
@@ -506,16 +572,12 @@ public class AgentOrchestrator {
                 sb.append("\n\n").append(binding);
             }
         }
-        if (!claimsTable.isEmpty()) {
-            sb.append("\n\n## 前序观点速览（交叉审查时从此表选定交锋对象与具体论断）\n\n")
-                    .append(claimsTable);
-        }
         String askedQuestions = formatAskedQuestions(prior);
         if (!askedQuestions.isEmpty()) {
             sb.append("\n\n## 已提出过的追问（你的新问题不得与其中任何一条重复或近似；用户对它们的回答见上方事实清单）\n\n")
                     .append(askedQuestions);
         }
-        sb.append("\n\n## 前面其他参与者的完整发言\n\n")
+        sb.append("\n\n## 前面其他参与者的完整发言（模型观点，未经用户确认，不是事实来源）\n\n")
                 .append(agents.isEmpty() ? "（暂无）" : agents)
                 .append("\n");
         return sb.toString();
@@ -530,12 +592,12 @@ public class AgentOrchestrator {
         String isIndependentAnalysis = phaseBlock != null && phaseBlock.contains("独立分析") ? "是" : "否";
         String msg = formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
                 + "\n---\n\n现在轮到你了。从**你的角色立场**出发，**直指上文「用户核心议题」中的具体目标、约束、利益相关方、时间或内在矛盾**发起挑战或追问；"
-                + "须遵守上文「本轮审议阶段」：独立分析轮匿名化引用；交叉审查轮必须点名交锋并尝试合题。"
+                + "须遵守上文「本轮审议阶段」：独立分析轮匿名化引用；交叉审查轮核对证据；允许同意，不强制交锋或合题。"
                 + "禁止只输出与用户议题无关的通用管理话术。"
                 + "\n\n接地要求（违反任何一条即视为失败发言）：\n"
-                + "1. 你的分析必须**显式使用**「用户在审议中已补充的事实」（如有）——引用用户原话关键词，把它们当作已确认的真实处境，而不是从零空谈；\n"
+                + "1. 你的分析必须**显式使用**「用户在审议中的原话」（如有）——引用原话关键词；仅将用户明确陈述的现实信息作为事实，保留假设和意愿的语气；\n"
                 + "2. **禁止重复询问**用户已经回答过的问题（已回答内容见上方事实清单）；新的追问必须比上一轮更深一层，建立在已有回答之上；\n"
-                + "3. 若用户最新发言是对某位发言人追问的回答，你必须先一句话点明「这个回答改变了什么判断」，再展开你的分析。";
+                + "3. 优先回应本轮明确的任务；仅在用户确实回应前一轮追问时结合其语境，不强行宣称用户改变了判断。";
         if ("是".equals(isIndependentAnalysis)) {
             msg += "\n\n**首先**用一句话总结你的核心观点/建议方向（便于读者快速抓住重点），然后按你的指定输出格式完整展开分析。";
         }
@@ -586,9 +648,17 @@ public class AgentOrchestrator {
         return sb.toString();
     }
 
-    /** 用户是否明确要求提前收束出报告（中场小结里会提示这个口令） */
-    private static boolean userRequestedCloseout(String latestUser) {
-        if (latestUser == null || latestUser.isBlank()) {
+    /** 用户明确要求继续审议时，不让圈数或共识触发终局报告。 */
+    static boolean userRequestedInterim(String latestUser) {
+        if (latestUser == null || latestUser.isBlank()) return false;
+        return latestUser.trim().equals("中场小结")
+                || latestUser.matches("(?s).*(?:请|先|只|做|给|要|是).{0,3}中场小结.*")
+                && !latestUser.matches("(?s).*(?:不要|别|不做).{0,3}中场小结.*")
+                || latestUser.matches("(?s).*(?:先不|暂不|不要|别|不急于|暂时不|先别)[^，。；！？!?;]{0,8}(?:结论|报告|收束|总结).*");
+    }
+
+    static boolean userRequestedCloseout(String latestUser) {
+        if (latestUser == null || latestUser.isBlank() || userRequestedInterim(latestUser)) {
             return false;
         }
         String t = latestUser.trim();
@@ -605,9 +675,9 @@ public class AgentOrchestrator {
             AdaptiveDepthGate.ConsensusAssessment assessment
     ) {
         String phase = """
-                ## 本轮审议阶段：中场小结（第一圈结束，共识未达成）
+                ## 本轮审议阶段：中场小结（用户要求继续审议，或当前尚不足以收束）
 
-                不要输出终局报告；按你的角色指令做紧凑小结，并把审议引向第二圈交叉审查。
+                不要输出终局报告；按你的角色指令做紧凑小结，并把审议引向下一轮交叉审查。
                 """;
         StringBuilder facts = new StringBuilder("\n## 共识评估（小结依据，不要原样照抄字段）\n\n");
         if (assessment != null) {
@@ -635,9 +705,8 @@ public class AgentOrchestrator {
     ) {
         return formatSandboxContextBlock(prior, latestUser, scene, phaseBlock)
                 + consensusBlock(assessment)
-                + "\n---\n作为本轮综合执笔人，请收束这场博弈：博弈复盘与决策沙盘表格中的「关键问题」必须**显式回扣上述用户核心议题**，"
-                + "结论与行动建议必须**逐条对应「用户在审议中已补充的事实」**（如有）——用户给过的数字、约束、表态都要用上，"
-                + "不允许给出对任何人都成立的通用建议。输出你的决策沙盘报告。\n";
+                + "\n---\n作为本轮综合执笔人，请核对用户原话，区分事实、条件假设与建议。"
+                + "用户未给出的成本、效果与工期明确保留未知，不为完成计划而补造数字。输出你的决策沙盘报告。\n";
     }
 
     public Map<String, Object> capabilities() {

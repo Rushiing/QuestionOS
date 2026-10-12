@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../../components/AuthProvider';
 import { GoogleLoginButton } from '../../components/GoogleLoginButton';
 import { apiPath } from '../../lib/runtime-config';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { setUserFromLogin } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -46,7 +48,7 @@ export default function RegisterPage() {
 
       if (data.access_token) {
         localStorage.setItem('token', data.access_token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        setUserFromLogin(data.user);
         router.push('/');
       }
     } catch (err: any) {
@@ -96,6 +98,8 @@ export default function RegisterPage() {
         {/* Register Form */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <h2 className="text-xl font-semibold text-slate-800 mb-6">注册账号</h2>
+
+          <p className="mb-4 text-sm text-slate-600">已有旧账号？<a href="/recover" className="text-[#2f6a4a]">验证原邮箱并恢复历史</a>。如需全新账号，请使用另一个邮箱。</p>
 
           <form onSubmit={handleRegister} className="space-y-4">
             <div>

@@ -1,0 +1,7 @@
+# Merge only this site into the existing host Caddy configuration after approval.
+# Do not replace the NewRICH sites or start another Caddy on ports 80/443.
+questionos.daydreamer.world {
+    reverse_proxy 127.0.0.1:13000 {
+        flush_interval -1
+    }
+}

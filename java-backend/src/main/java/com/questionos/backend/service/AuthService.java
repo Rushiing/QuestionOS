@@ -28,6 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AuthService {
     private final WebClient webClient;
+    private final EmailClaimMailer claimMailer;
+    private final java.security.SecureRandom random = new java.security.SecureRandom();
     private final String googleClientId;
     /** 与前端 NEXT_PUBLIC_SANDBOX_TOKEN 对齐；本地调试可免 Google 登录 */
     private final String sandboxToken;
@@ -52,8 +54,10 @@ public class AuthService {
             @Value("${questionos.auth.google.client-id:}") String googleClientId,
             @Value("${questionos.auth.sandbox-token:}") String sandboxToken,
             @Value("${questionos.auth.jwt.secret:}") String jwtSecret,
-            ObjectProvider<UserAccountJdbcRepository> userAccountRepository
+            ObjectProvider<UserAccountJdbcRepository> userAccountRepository,
+            EmailClaimMailer claimMailer
     ) {
+        this.claimMailer = claimMailer;
         this.webClient = WebClient.builder().build();
         this.googleClientId = googleClientId;
         this.sandboxToken = sandboxToken == null ? "" : sandboxToken.trim();
@@ -94,9 +98,10 @@ public class AuthService {
     public AuthDtos.AuthSuccessResponse registerWithPassword(String email, String password, String name) {
         UserAccountJdbcRepository repo = requiredUserRepository();
         String normalizedEmail = email.trim().toLowerCase(java.util.Locale.ROOT);
-        if (repo.findPasswordAccountByEmail(normalizedEmail).isPresent()) {
-            throw new IllegalArgumentException("该邮箱已注册");
+        if (repo.findByEmail(normalizedEmail).isPresent()) {
+            throw new IllegalArgumentException("该邮箱已有账号，请登录或找回旧账号");
         }
+        validateNewPassword(password);
         String displayName = name == null || name.isBlank()
                 ? normalizedEmail.substring(0, normalizedEmail.indexOf('@'))
                 : name.trim();
@@ -114,6 +119,52 @@ public class AuthService {
             throw new IllegalArgumentException("邮箱或密码错误");
         }
         return new AuthDtos.AuthSuccessResponse(issueAccessToken(account.user()), account.user());
+    }
+
+    public void requestEmailClaim(String email) {
+        if (!claimMailer.available()) throw new IllegalStateException("邮箱验证暂不可用，请稍后重试");
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        String token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        String hash = claimTokenHash(token);
+        var repo = requiredUserRepository();
+        var user = repo.reserveEmailClaim(email.trim().toLowerCase(java.util.Locale.ROOT), hash);
+        if (user.isEmpty()) return; // Same response for unknown, claimed and throttled accounts.
+        try {
+            claimMailer.send(user.get().email(), token);
+        } catch (org.springframework.mail.MailException e) {
+            repo.invalidateEmailClaim(user.get().id(), hash);
+            // Do not expose provider diagnostics, addresses or credentials.
+            throw new IllegalStateException("邮箱验证暂不可用，请稍后重试");
+        }
+    }
+
+    public AuthDtos.AuthSuccessResponse claimEmail(String email, String token, String password) {
+        validateNewPassword(password);
+        String normalizedEmail = email.trim().toLowerCase(java.util.Locale.ROOT);
+        String hash = claimTokenHash(token);
+        var repo = requiredUserRepository();
+        if (!repo.validEmailClaim(normalizedEmail, hash)) {
+            throw new IllegalArgumentException("验证口令无效或已过期，请重新申请");
+        }
+        var user = repo.claimEmail(normalizedEmail, hash, passwordEncoder.encode(password))
+                .orElseThrow(() -> new IllegalArgumentException("验证口令无效或已过期，请重新申请"));
+        return new AuthDtos.AuthSuccessResponse(issueAccessToken(user), user);
+    }
+
+    private String claimTokenHash(String token) {
+        try {
+            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
+    }
+
+    private void validateNewPassword(String password) {
+        if (password.length() < 6 || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new IllegalArgumentException("密码至少 6 个字符，且 UTF-8 长度不能超过 72 字节");
+        }
     }
 
     private UserAccountJdbcRepository requiredUserRepository() {

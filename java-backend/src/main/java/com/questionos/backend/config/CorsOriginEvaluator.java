@@ -6,13 +6,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.reactive.config.CorsRegistry;
+import org.springframework.web.reactive.config.WebFluxConfigurer;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
-public class CorsOriginEvaluator {
+public class CorsOriginEvaluator implements WebFluxConfigurer {
 
     private static final Logger log = LoggerFactory.getLogger(CorsOriginEvaluator.class);
 
@@ -43,5 +45,15 @@ public class CorsOriginEvaluator {
 
     public List<String> exactOrigins() {
         return exactOrigins;
+    }
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+                .allowedOrigins(exactOrigins.toArray(String[]::new))
+                .allowedMethods("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                .allowedHeaders("Authorization", "Content-Type", "X-API-Version", "Idempotency-Key",
+                        "Last-Event-ID", "Accept", "Origin")
+                .allowCredentials(false);
     }
 }

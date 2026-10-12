@@ -95,31 +95,32 @@ apiClient.interceptors.response.use(
   }
 );
 
+// Response interceptor above unwraps response.data; expose that body type to callers.
 // API方法封装
 export const api = {
   // GET请求
   get: <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
-    return apiClient.get(url, config);
+    return apiClient.get(url, config) as Promise<T>;
   },
 
   // POST请求
   post: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
-    return apiClient.post(url, data, config);
+    return apiClient.post(url, data, config) as Promise<T>;
   },
 
   // PUT请求
   put: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
-    return apiClient.put(url, data, config);
+    return apiClient.put(url, data, config) as Promise<T>;
   },
 
   // PATCH请求
   patch: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
-    return apiClient.patch(url, data, config);
+    return apiClient.patch(url, data, config) as Promise<T>;
   },
 
   // DELETE请求
   delete: <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
-    return apiClient.delete(url, config);
+    return apiClient.delete(url, config) as Promise<T>;
   },
 };
 

@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: ${QOS_POSTGRES_IMAGE:?Set a PostgreSQL 18 image with a recorded digest}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: questionos
+      POSTGRES_DB: questionos
+      POSTGRES_PASSWORD: ${QOS_POSTGRES_PASSWORD:?Set the target database password}
+    volumes:
+      # PostgreSQL 18 stores versioned PGDATA below this directory.
+      - postgres_data:/var/lib/postgresql
+    networks: [data]
+    mem_limit: 384m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U questionos -d questionos']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: &logging
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+
+  backend:
+    image: ${QOS_BACKEND_IMAGE:?Set the prebuilt backend image}
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      PORT: '8080'
+      SPRING_PROFILES_ACTIVE: postgres
+      PGHOST: postgres
+      PGPORT: '5432'
+      PGDATABASE: questionos
+      PGUSER: questionos
+      PGSSLMODE: disable
+      PGPASSWORD: ${QOS_POSTGRES_PASSWORD:?Set the target database password}
+      QUESTIONOS_AUTH_JWT_SECRET: ${QUESTIONOS_AUTH_JWT_SECRET:?Preserve the existing JWT signing secret}
+      QUESTIONOS_SANDBOX_TOKEN: ${QUESTIONOS_SANDBOX_TOKEN:?Preserve the existing sandbox token}
+      QUESTIONOS_GOOGLE_CLIENT_ID: ${QUESTIONOS_GOOGLE_CLIENT_ID:?Preserve the existing Google client ID}
+      QUESTIONOS_SMTP_HOST: ${QUESTIONOS_SMTP_HOST:-}
+      QUESTIONOS_SMTP_PORT: ${QUESTIONOS_SMTP_PORT:-587}
+      QUESTIONOS_SMTP_USERNAME: ${QUESTIONOS_SMTP_USERNAME:-}
+      QUESTIONOS_SMTP_PASSWORD: ${QUESTIONOS_SMTP_PASSWORD:-}
+      QUESTIONOS_CLAIM_MAIL_FROM: ${QUESTIONOS_CLAIM_MAIL_FROM:-}
+      QUESTIONOS_ALLOWED_ORIGINS: ${QOS_PUBLIC_ORIGIN:?Set the approved HTTPS origin}
+      QUESTIONOS_LLM_ENDPOINT: ${QUESTIONOS_LLM_ENDPOINT:?Preserve the existing model endpoint}
+      QUESTIONOS_LLM_API_KEY: ${QUESTIONOS_LLM_API_KEY:?Set the model credential}
+      QUESTIONOS_LLM_MODEL: ${QUESTIONOS_LLM_MODEL:?Preserve the existing model}
+      QUESTIONOS_LLM_EXTRA_BODY_ENABLE_THINKING: ${QUESTIONOS_LLM_EXTRA_BODY_ENABLE_THINKING:-false}
+    networks: [app, data]
+    # The existing Dockerfile uses -Xmx1024m; leave native-memory headroom.
+    mem_limit: 1536m
+    stop_grace_period: 300s
+    logging: *logging
+
+  frontend:
+    image: ${QOS_FRONTEND_IMAGE:?Set the prebuilt frontend image}
+    restart: unless-stopped
+    depends_on: [backend]
+    environment:
+      PORT: '3000'
+      INTERNAL_API_URL: http://backend:8080
+      INTERNAL_GOOGLE_CLIENT_ID: ${QUESTIONOS_GOOGLE_CLIENT_ID:?Preserve the existing Google client ID}
+      NEXT_PUBLIC_API_VERSION: '1.1'
+      NEXT_PUBLIC_API_URL: ''
+      QUESTIONOS_BROWSER_API_URL: ''
+    ports: ['127.0.0.1:13000:3000']
+    networks: [app]
+    mem_limit: 768m
+    stop_grace_period: 300s
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    logging: *logging
+
+  smoke-monitor:
+    image: ${QOS_MONITOR_IMAGE:?Set the prebuilt monitor image}
+    restart: unless-stopped
+    depends_on: [frontend]
+    environment:
+      PORT: '3000'
+      QOS_FRONTEND_URL: ${QOS_MONITOR_FRONTEND_URL:-http://frontend:3000}
+      QOS_BACKEND_URL: http://backend:8080
+      QOS_SMOKE_CREATE_SESSION: '0'
+      QOS_SMOKE_RUN_LLM_TURN: '0'
+      QOS_MONITOR_INTERVAL_MS: '60000'
+      QOS_MONITOR_STALE_AFTER_MS: '180000'
+    ports: ['127.0.0.1:13001:3000']
+    networks: [app]
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/ready").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    logging: *logging
+
+networks:
+  app: {}
+  data:
+    internal: true
+
+volumes:
+  postgres_data: {}

@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../../components/AuthProvider';
 import { GoogleLoginButton } from '../../components/GoogleLoginButton';
 import { apiPath } from '../../lib/runtime-config';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { setUserFromLogin } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,7 +27,7 @@ export default function LoginPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || '登录失败');
       localStorage.setItem('token', data.access_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      setUserFromLogin(data.user);
       router.push('/');
     } catch (err: any) {
       setError(err.message || '登录失败');
@@ -65,6 +67,8 @@ export default function LoginPage() {
           <div className="relative my-6"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-slate-500">或</span></div></div>
 
           <GoogleLoginButton />
+
+          <a href="/recover" className="mt-5 block text-center text-sm font-medium text-[#2f6a4a]">曾用 Google 登录？找回旧账号</a>
 
           <p className="text-center text-slate-500 text-sm mt-6">
             还没有账号？{' '}

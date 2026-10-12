@@ -18,6 +18,14 @@ public class AuthDtos {
             @NotBlank String password
     ) {}
 
+    public record EmailClaimRequest(@NotBlank @Email @Size(max = 254) String email) {}
+
+    public record EmailClaimConfirmRequest(
+            @NotBlank @Email @Size(max = 254) String email,
+            @NotBlank @jakarta.validation.constraints.Pattern(regexp = "[A-Za-z0-9_-]{43}") String token,
+            @NotBlank @Size(min = 6, max = 72) String password
+    ) {}
+
     public record AuthUser(
             String id,
             String email,

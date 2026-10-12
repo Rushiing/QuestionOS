@@ -1,5 +1,8 @@
 # QuestionOS Railway 生产 Runbook
 
+> 历史阶段材料。当前部署与验收以[正式切换执行单](../aliyun/cutover-plan-20261009.md)为准；本文的“当前/待验收”均指记录当时。
+阿里云迁移准备见 [`../aliyun/README.md`](../aliyun/README.md)。本文件仍描述当前 Railway 平台，不能因迁移配置已存在而停服务或删除数据库。
+
 本文只记录当前生产拓扑和可重复操作。不要整份导出 Railway Variables；只读取任务需要的变量名，任何 secret 不进入日志、PR 或 Agent 记忆。
 
 ## 1. 生产拓扑
@@ -133,3 +136,7 @@ curl -fsS https://smoke-monitor-production.up.railway.app/last \
 - Proxy 失败：确认 `INTERNAL_API_URL` 为 `http://questionos.railway.internal:8080`，浏览器 API base 保持空字符串。
 - Smoke 502：确认 Config `/railway.smoke.json`、healthcheck `/ready`，脚本优先读取 Railway `PORT`。
 - CORS：地址栏 origin 必须完整出现在 `QUESTIONOS_ALLOWED_ORIGINS`；先排除 502，再判断 CORS。
+
+## 邮箱认领（本地实现，未发布）
+
+Google-only 旧账号可在 `/recover` 通过原邮箱一次性口令设置密码，沿用原 user_id 与历史。同邮箱禁止新建账号。新增 `/api/auth/email-claim/request` 与 `/confirm`，V7 邮箱唯一索引与认领表。上线前需配置后端 `QUESTIONOS_SMTP_HOST/PORT/USERNAME/PASSWORD`、`QUESTIONOS_CLAIM_MAIL_FROM`（STARTTLS/587），验收真实投递。发信服务尚未开通；未修改 Railway Variables 或生产数据库。完整行为与回退限制见 `deploy/aliyun/login-continuity.md`（仓库根目录）。
