@@ -13,6 +13,7 @@
 - Java `PromptContractFixtureTest`：Calibration JSON、phase label、单问展示、Step 1 parser fail-closed。
 - Java `SandboxSceneRoutingTest`：各审议室 routing context。
 - Java `IntegratorPromptContractTest`：核心议题、用户事实、问答绑定、前序观点与最终 integrator 指令。
+- Java `GroundedRoleReplyTest` / `GroundedReportTest`：用户来源回读、数量及上下限约束、一次重写上限、报告不改写用户事实。
 - Frontend `npm run test:contracts`：Calibration JSON → Markdown 与 integrator 专家段落 golden cases。
 
 Fixture 只写稳定契约，不固定模型措辞。

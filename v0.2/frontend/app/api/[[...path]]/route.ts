@@ -39,7 +39,8 @@ async function proxy(request: NextRequest, pathSegments: string[] | undefined) {
   if (isMutating) {
     const bodyBuf = await request.arrayBuffer();
     if (bodyBuf.byteLength > 0) {
-      init.body = bodyBuf;
+      // Keep an immutable body that fetch can reread for authentication responses.
+      init.body = new Blob([bodyBuf]);
     }
     headers.delete('content-length');
     headers.delete('transfer-encoding');
@@ -71,32 +72,32 @@ async function proxy(request: NextRequest, pathSegments: string[] | undefined) {
   }
 }
 
-type Ctx = { params: { path?: string[] } };
+type Ctx = { params: Promise<{ path?: string[] }> };
 
 export async function GET(request: NextRequest, ctx: Ctx) {
-  return proxy(request, ctx.params.path);
+  return proxy(request, (await ctx.params).path);
 }
 
 export async function HEAD(request: NextRequest, ctx: Ctx) {
-  return proxy(request, ctx.params.path);
+  return proxy(request, (await ctx.params).path);
 }
 
 export async function POST(request: NextRequest, ctx: Ctx) {
-  return proxy(request, ctx.params.path);
+  return proxy(request, (await ctx.params).path);
 }
 
 export async function PUT(request: NextRequest, ctx: Ctx) {
-  return proxy(request, ctx.params.path);
+  return proxy(request, (await ctx.params).path);
 }
 
 export async function PATCH(request: NextRequest, ctx: Ctx) {
-  return proxy(request, ctx.params.path);
+  return proxy(request, (await ctx.params).path);
 }
 
 export async function DELETE(request: NextRequest, ctx: Ctx) {
-  return proxy(request, ctx.params.path);
+  return proxy(request, (await ctx.params).path);
 }
 
 export async function OPTIONS(request: NextRequest, ctx: Ctx) {
-  return proxy(request, ctx.params.path);
+  return proxy(request, (await ctx.params).path);
 }

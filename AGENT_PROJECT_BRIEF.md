@@ -1,5 +1,7 @@
 # QuestionOS — 给其他 Agent / 协作者的工程说明（最新版）
 
+正式入口为 https://questionos.daydreamer.world ，现运行于阿里云。迁移、验收和 Railway 退出状态见 [`deploy/aliyun/cutover-plan-20261009.md`](deploy/aliyun/cutover-plan-20261009.md)。迁移源码已同步到 `codex/questionos-aliyun-migration`（PR #3）；Git 提交不等于线上镜像版本，部署前仍需核对运行产物。
+
 > 本文档按**当前仓库真实代码**整理，用于快速让外部 Agent 或新成员建立上下文、能改对地方。若与根目录下旧版 `v0.2/README.md`（仍写 Python/FastAPI）冲突，**以本文与 `java-backend/`、`v0.2/frontend/` 为准**。
 
 ---
@@ -176,11 +178,11 @@ npm run dev
 
 - 后端平台健康：`GET /actuator/health/liveness`；依赖健康与人工验收：`GET /actuator/health`
 - 指标：`GET /actuator/prometheus`
-- 部署参考：`deploy/railway/README.md`、`deploy/alinux/README.md`
-- 交付规范：`docs/DELIVERY_WORKFLOW.md`（分支 / worktree、风险分级、CI、Railway 分服务验收与 truth-sync）
+- 现役部署参考：`deploy/aliyun/cutover-plan-20261009.md`；Railway 与 alinux 文档为历史参考。
+- 交付规范：`docs/DELIVERY_WORKFLOW.md`（分支 / worktree、风险分级、CI、阿里云分服务验收与 truth-sync）
 - 常驻巡检：`Dockerfile.railway-smoke-monitor` + `scripts/questionos-smoke-monitor.mjs`。高频巡检默认不创建 session；只有显式设置 `QOS_SMOKE_CREATE_SESSION=1` 才验证 session + SSE replay。
-- 生产四资源：`frontend`（GitHub，root `/v0.2/frontend`）、`backend`（GitHub，root `/`）、`Postgres`（Railway image + volume）、`smoke-monitor`（GitHub，root `/`）。四项必须分别验收。
-- 发布证据：`scripts/questionos-release-evidence.mjs` 核对 merge commit、三个 GitHub service deployment、Postgres 连通和线上 smoke。
+- 现役 Compose `questionos-prod` 包含 frontend、backend、Postgres、smoke-monitor；四项必须分别验收。
+- 发布证据：核对实际镜像摘要、运行配置、Postgres 连通、正式域名与真实用户路径；`scripts/questionos-release-evidence.mjs` 的 Railway 服务证据仅适用于旧平台。
 - Prompt 质量：`docs/PROMPT_QUALITY_WORKFLOW.md`；legacy Python/mock 不代表生产 Java Agent。
 
 ---
@@ -211,3 +213,43 @@ git log -1 --oneline
 ## 13. 许可与联系
 
 License 以仓库根目录 `LICENSE` 或各子项目声明为准（若存在）。Issue / PR 使用上述 GitHub 仓库页面即可。
+
+## 邮箱认领（本地实现，未发布）
+
+Google-only 旧账号可在 `/recover` 通过原邮箱一次性口令设置密码，沿用原 user_id 与历史。同邮箱禁止新建账号。新增 `/api/auth/email-claim/request` 与 `/confirm`，V7 邮箱唯一索引与认领表。上线前需配置后端 `QUESTIONOS_SMTP_HOST/PORT/USERNAME/PASSWORD`、`QUESTIONOS_CLAIM_MAIL_FROM`（STARTTLS/587），验收真实投递。阿里云邮件推送已开通，隔离演练库的真实邮件认领、登录及历史已验收；未修改 Railway Variables 或生产数据库。完整行为与回退限制见 `deploy/aliyun/login-continuity.md`（仓库根目录）。
+
+### 2026-10-08 密码登录状态修复
+
+密码登录与注册成功后统一调用 AuthProvider.setUserFromLogin，先同步 React 登录态与用户缓存，再执行客户端跳转。仅写 localStorage 不会更新持久化布局中的 Context，会造成首页显示未登录直到刷新。Google 登录与邮件认领原已使用该路径。
+
+迁移分支另含Next15.5.27依赖候选及异步API代理params适配，仅本地验证，未部署；当前演练前端仍为Next14的登录状态修复镜像。真实模型应用链路已完成12场景/21回合验收，质量修复与复测见deploy/aliyun/model-acceptance-results.md。
+
+### 2026-10-08 沙盘回答质量修复（迁移候选）
+
+AgentOrchestrator 在整合官轮次优先尊重用户中场小结/暂不收束的要求，再考虑共识与圈数。上下文区分用户原话、假设回答与模型观点，本轮更正在输入末尾再次给出以覆盖历史推断。保留四席分工、展示名和轮转，停止注入夸张人格口吻；交叉审查允许同意，优先核对证据，不强制制造对立。
+
+沙盘生成（sandbox:deliberation）后增加一次事实校对（sandbox:evidence-review），只以用户原话核对草稿；校对任务由程序指定为角色分析、中场或最终报告，避免历史中场请求覆盖当前任务。校对失败沿用agent_error降级，不发布未校对草稿。百炼DeepSeek V4下这两个调用各启用4096-token推理预算，增加一次模型请求及等待；其余调用仍遵循原配置。
+
+仅在Pre-RICH独立演练库验收，未发布Railway。模型仍为deepseek-v4-flash，Pro对照未证明换模型足以解决问题。通过项、失败迭代及质量边界见deploy/aliyun/model-acceptance-results.md。
+
+最终报告固定区分事实与未知、条件判断、建议计划；禁止自行补精确金额或将周数/天数相减形成未获确认的工期。最终复验另用两组恢复历史fixture（当前及旧错误历史）重复原第8轮请求，证据见上述验收记录。
+
+中间角色与发布前校对同样禁止未经口径确认的日历运算；销售与研发能否并行必须以资源独立为条件，不能默认销售不占用研发。当前基数下的流失人数也不能当成未来每月固定人数。
+
+
+验收限制：最终报告两个样本通过，但中间角色资源独立性/工期/流失推算仍未通过。结构化JSON校对试验产生降级，已撤回；不能称回答质量全项完成，暂未正式切换。
+
+### 2026-10-09 角色来源与数量约束（演练候选）
+
+取消“最新发言必然回答上一轮追问”的绑定，不再重复注入截断首句观点表；完整历史仍保留。三位分析角色改用GroundedRoleReply，最终报告改用GroundedReport：用户依据由source_id定位后原样呈现；角色分析分列未知、前提、条件后果、建议与追问；最终报告原样引用核心议题及用户更正，分列待确认、条件判断与建议计划。程序验证来源属于用户、字段完整，条件推演的数量只能引用用户提供的完整数量，保留至少/至多等上下限；建议和追问不当作既有事实。数量匹配不等于因果/语义验证，不能称零幻觉。
+
+sandbox:grounded-role与sandbox:grounded-report使用JSON object，正常一次请求；格式/来源/数量失败最多重写一次，统一反馈全部数量缺口；若重写后仅推演数量仍不可靠，省略对应推演并显示核对提示，保留来源与建议；来源或格式错误仍发agent_error。中场小结保留现有生成+校对。主模型仍deepseek-v4-flash，跨模型校对实验未采用；没有新增模型环境变量。新验收记录见deploy/aliyun/quality-followup-20261009.md，未切换生产。
+
+
+### 2026-10-09 迁移准备收尾（历史阶段）
+
+Pre-RICH隔离演练已升级Next15.5.27 Linux前端；OSS专用目录权限、上传回读、空库恢复及每日timer已验证。当前timer备份模拟库，正式切换必须改为生产库；生产配置仅暂存，未改DNS或切换Railway。执行范围、验收与回退见`deploy/aliyun/cutover-plan-20261009.md`。回答效果持续优化与迁移门禁分离。
+
+### 2026-10-09 正式域名会话403修复
+
+用户已确认正式站旧账号找回、刷新登录态与历史记录验收通过；随后浏览器创建会话403。复现发现携带正式Origin时被Controller旧Railway来源注解拒绝，无Origin脚本未覆盖此路径。CorsOriginEvaluator现实现WebFluxConfigurer，将配置中的精确域名应用到`/api/**`真实请求映射；保留现有Controller兼容来源，不改认证、历史或模型逻辑。SessionCorsTest验证两个配置域名创建201及陌生域名403。

@@ -6,6 +6,19 @@ spring:
     default: local
   application:
     name: questionos-java-backend
+  mail:
+    host: ${QUESTIONOS_SMTP_HOST:}
+    port: ${QUESTIONOS_SMTP_PORT:587}
+    username: ${QUESTIONOS_SMTP_USERNAME:}
+    password: ${QUESTIONOS_SMTP_PASSWORD:}
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.starttls.required]": true
+      "[mail.smtp.ssl.checkserveridentity]": true
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 5000
+      "[mail.smtp.writetimeout]": 5000
   # multipart / 背景文档解析（≤2MB）需要抬高内存缓冲上限
   codec:
     max-in-memory-size: 3MB
@@ -15,6 +28,9 @@ server:
   address: 0.0.0.0
 
 management:
+  health:
+    mail:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -22,6 +38,7 @@ management:
 
 questionos:
   auth:
+    claim-mail-from: ${QUESTIONOS_CLAIM_MAIL_FROM:}
     sandbox-token: ${QUESTIONOS_SANDBOX_TOKEN:sk-sandbox-dev}
     # 生产务必设置强随机串；用于签发登录 JWT（无状态，重启/多实例仍可用同一 token 校验）
     jwt:

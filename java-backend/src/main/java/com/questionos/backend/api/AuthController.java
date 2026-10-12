@@ -45,6 +45,28 @@ public class AuthController {
                         ResponseEntity.status(HttpStatus.UNAUTHORIZED).body((Object) java.util.Map.of("detail", e.getMessage()))));
     }
 
+    @PostMapping("/email-claim/request")
+    public Mono<ResponseEntity<Object>> requestEmailClaim(@Valid @RequestBody AuthDtos.EmailClaimRequest request) {
+        return Mono.fromCallable(() -> {
+                    authService.requestEmailClaim(request.email());
+                    return ResponseEntity.ok((Object) java.util.Map.of("detail",
+                            "若该邮箱有待恢复的旧账号，验证邮件将发送至邮箱。请检查收件箱及垃圾邮件，60 秒后可重试。"));
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(IllegalStateException.class, e -> Mono.just(
+                        ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                                .body((Object) java.util.Map.of("detail", "邮箱验证暂不可用，请稍后重试"))));
+    }
+
+    @PostMapping("/email-claim/confirm")
+    public Mono<ResponseEntity<Object>> confirmEmailClaim(@Valid @RequestBody AuthDtos.EmailClaimConfirmRequest request) {
+        return Mono.fromCallable(() -> ResponseEntity.ok((Object)
+                        authService.claimEmail(request.email(), request.token(), request.password())))
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(IllegalArgumentException.class, e -> Mono.just(
+                        ResponseEntity.badRequest().body((Object) java.util.Map.of("detail", e.getMessage()))));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<?> me(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
         String token = extractBearer(authHeader);
@@ -60,6 +82,12 @@ public class AuthController {
         String token = extractBearer(authHeader);
         authService.logout(token);
         return ResponseEntity.ok(java.util.Map.of("status", "ok"));
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<?> accountConflict() {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(java.util.Map.of("detail", "该邮箱已有账号，请登录或找回旧账号"));
     }
 
     private String extractBearer(String authHeader) {

@@ -111,12 +111,13 @@ public class OpenClawInvokeService {
                     "未配置 questionos.llm.endpoint（QUESTIONOS_LLM_ENDPOINT 为空）。请先设置后重试。"
             ));
         }
+        String model = defaultLlmModel;
         if (streamChatCompletionsDefault) {
             return invokeDefaultLlmStreamingCollect(
-                    defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1, -1);
+                    defaultLlmEndpoint, defaultLlmApiKey, model, systemPrompt, userMessage, stage, -1, -1);
         }
         return invokeOpenAICompatibleRaw(
-                defaultLlmEndpoint, defaultLlmApiKey, defaultLlmModel, systemPrompt, userMessage, stage, -1, -1);
+                defaultLlmEndpoint, defaultLlmApiKey, model, systemPrompt, userMessage, stage, -1, -1);
     }
 
     /**
@@ -167,6 +168,7 @@ public class OpenClawInvokeService {
         }
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
         Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, true, maxTokensOverride);
+        applySandboxRequestOptions(body, stage, useModel);
         int effSec = effectiveTimeoutSeconds(timeoutSecondsOverride);
         Duration timeout = Duration.ofSeconds(effSec);
         return Mono.fromCallable(() -> {
@@ -269,10 +271,23 @@ public class OpenClawInvokeService {
         msgList.add(Map.of("role", "user", "content", userMessage == null ? "" : userMessage));
 
         Map<String, Object> body = newOpenAiChatBody(useModel, msgList, endpoint, false, maxTokensOverride);
+        applySandboxRequestOptions(body, stage, useModel);
 
         int effSec = effectiveTimeoutSeconds(timeoutSecondsOverride);
         Duration llmTimeout = Duration.ofSeconds(effSec);
         return executeChatCompletions(url, body, useApiKey, useModel, stage, llmTimeout);
+    }
+
+    static void applySandboxRequestOptions(Map<String, Object> body, String stage, String model) {
+        boolean groundedRole = "sandbox:grounded-role".equals(stage) || "sandbox:grounded-report".equals(stage);
+        if (groundedRole) {
+            body.put("response_format", Map.of("type", "json_object"));
+        }
+        if ((groundedRole || "sandbox:evidence-review".equals(stage) || "sandbox:deliberation".equals(stage))
+                && body.containsKey("enable_thinking") && model.startsWith("deepseek-v4")) {
+            body.put("enable_thinking", true);
+            body.put("thinking_budget", 4096);
+        }
     }
 
     /** 显式短超时（如分类）用 override；否则主对话至少 25s。 */

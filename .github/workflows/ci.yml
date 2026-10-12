@@ -31,6 +31,20 @@ jobs:
 
   java-checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: qos_auth_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qos_auth_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      QOS_AUTH_TEST_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/qos_auth_test
+      QOS_AUTH_TEST_DB_USER: postgres
     defaults:
       run:
         working-directory: java-backend
