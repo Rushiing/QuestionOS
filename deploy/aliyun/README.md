@@ -1,6 +1,6 @@
 # QuestionOS 阿里云迁移准备
 
-> 现役状态（2026-10-09）：https://questionos.daydreamer.world 已切换至 Pre-RICH，用户旧账号与历史验收通过。最终状态、403修复和 Railway 退出条件见[切换执行单](cutover-plan-20261009.md)。下文为演练历史，不能作为当前状态。
+> 现役状态（2026-10-12）：https://questionos.daydreamer.world 运行于 Pre-RICH；Railway 旧项目已删除并取消续订。迁移验收、账期与恢复边界见[正式状态记录](cutover-plan-20261009.md)。下文为演练历史，不能作为当前状态。
 
 历史演练状态：Pre-RICH 隔离演练已部署并恢复备份，见 rehearsal-results.md；未正式切换网站 DNS。QuestionOS 先迁，CyberMOMO 后迁。目标机是 Pre-RICH，必须保留 NewRICH 两个 systemd 服务与宿主机 Caddy。
 

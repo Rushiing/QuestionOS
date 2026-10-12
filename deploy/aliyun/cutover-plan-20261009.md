@@ -1,10 +1,23 @@
-# QuestionOS 正式切换执行单 · 2026-10-09
+# QuestionOS 正式切换与 Railway 退出记录
 
-状态（2026-10-09 收尾核对）：正式切换已完成，用户已确认旧账号找回、刷新登录态与历史记录通过；创建会话403已修复并完成服务端正式Origin链路复验。现役后端为 `questionos-backend:production-cors-20261009`。待核验2026-10-10凌晨自动备份及观察结果，之后按具体清单批准退出Railway。
+## 现役状态（2026-10-12）
 
-原 Railway backend/frontend/smoke-monitor 已停用，2026-10-09 进一步断开三项 GitHub 自动发布触发器并读回为0；旧Postgres与volume保留，Hobby订阅未取消。当前账期结束于2026-10-24 15:23:24（北京时间），用户退出期限仍为20日前。
+正式入口 https://questionos.daydreamer.world 于 2026-10-09 切到 Pre-RICH；旧账号、刷新登录态和历史已由用户验收。创建会话403已修复并完成服务端正式Origin链路复验；后端镜像为 `questionos-backend:production-cors-20261009`。本次退出复检未重新执行登录、模型写入或手机网络验收。
 
-下文保留按阶段记录；其中“未切换”“待用户验收”“演练库备份”等只描述当时状态，不能覆盖本节。上线代码存在本地未提交改动，源码集成仍为pending；保留迁移工作树、发布包与验收证据。
+- 用户核对清单后批准退出：QuestionOS、CyberMomo 两个 Railway 旧项目均已删除，覆盖8个服务、2个Postgres卷，无Bucket；最终API回读 `projectCount=0`、`projects=[]`。
+- Hobby已取消续订：`cancelAtPeriodEnd=true`，`cancelAt=2026-10-24T07:23:24Z`，即北京时间10月24日15:23:24。账期内仍显示ACTIVE不代表取消失败；已发生用量仍可能结算尾账。
+- 10月10、11、12日两套生产库定时备份及OSS下载字节校验均成功。最新成功时间为10月12日04:15:42（QuestionOS）、04:36:54（CyberMOMO），均为北京时间。完整恢复证据来自10月9日；每日回读不等于重新执行完整恢复。
+- 删除后两个正式域名HTTPS 200、TLS校验通过；QuestionOS monitor `ready=true`、CyberMOMO匿名鉴权401，生产容器运行，Caddy与NewRICH real/synthetic active。无容器重启或OOM；这不是峰值容量认证。
+- 原始导出、私有配置、OSS备份及恢复证据保留。退出凭证在本机 `~/.config/railway-exit-20261012/RESULT.md`，不要把私有证据内容提交Git。
+- 迁移源码已保存到 `codex/questionos-aliyun-migration`（提交 `3bf0312`），PR #3尚未合并；不能再写成“未提交”，也不能把已提交或PR状态当成新的部署证明。原始工作区的其他改动仍须保留。
+
+## 退出后的恢复与保留边界
+
+Railway旧库和部署已不存在，不能直接启用旧站回滚。恢复前先停止受影响写入、备份当前生产库并核对迁移后的新增数据，再向独立目标恢复一致的最新归档；不得用10月9日旧导出覆盖现役数据。
+
+备份脚本仍依赖 `/opt/questionos-rehearsal/bin/ossutil`。演练目录、演练数据库、恢复验证库和生产验收账号均未列入本次删除范围；先核对依赖和唯一数据，再单独提出清场清单。Google OAuth、移动网络、峰值容量与外部主动告警不在本次退出验收内。
+
+下文为按日期保留的历史阶段记录；“未切换”“旧库保留”“待用户验收”均描述当时状态，不覆盖以上现役结论。
 
 ## 切换前历史检查
 
