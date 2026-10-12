@@ -50,7 +50,7 @@ npm run dev                # http://127.0.0.1:3000
 - API 代理：`app/api/[[...path]]/route.ts` 反代到后端（开发指向 `http://127.0.0.1:8080`）
 - `lib/api.ts` / `lib/runtime-config.ts` 中 `SANDBOX_FALLBACK_TOKEN` 与后端 sandbox token 对齐
 
-## 原 Railway 配置（历史回滚参考，应用已停用）
+## 原 Railway 配置（历史参考，旧项目已删除）
 
 ### 后端服务（Java）
 - 连接 GitHub `Rushiing/QuestionOS`
@@ -92,7 +92,7 @@ npm run dev                # http://127.0.0.1:3000
 | 改了什么 | 同步什么 |
 |---|---|
 | API 路由 / SSE 事件 | `AGENT_PROJECT_BRIEF.md` 或 `java-backend/README.md` |
-| 环境变量 / 配置 | `application.yml` 映射 + Railway 部署文档 |
+| 环境变量 / 配置 | `application.yml` 映射 + `deploy/aliyun/` 部署文档 |
 | 沙盘流程（`SessionService` / `SandboxSceneClassifier`） | AGENT_PROJECT_BRIEF 的「给其他 Agent 的修改建议」 |
 | 前后端数据结构 | Java SSE payload 与前端消费同步（不只改字符串） |
 
@@ -124,7 +124,7 @@ npm run dev                # http://127.0.0.1:3000
 
 - 不要在 Netty IO 线程上新增阻塞调用；新增同步/阻塞逻辑必须放到 `boundedElastic`。
 - 不要只改前端或只改后端数据结构；SSE payload 与消费端必须同步。
-- 不要把 Railway Root Directory 改成子目录；当前部署约束是 Root Directory 留空 + `RAILWAY_DOCKERFILE_PATH`。
+- 现役部署以 `deploy/aliyun/` Compose、运行镜像与正式状态记录为准；原 Railway Root Directory/Variables 仅为历史资料，不得据此重建退役服务。
 
 验证与交付：
 

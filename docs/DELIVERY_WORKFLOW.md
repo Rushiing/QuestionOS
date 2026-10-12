@@ -37,7 +37,7 @@
 
 1. PR 填写任务边界、风险、验证证据、部署、回滚与 truth-sync。
 2. 基础 CI 必须全绿。`main` 只允许通过 PR 合并，推荐 squash merge。
-3. Railway 自动部署后，用 `scripts/questionos-release-evidence.mjs` 记录 commit SHA、受影响 GitHub service deployment 和 Postgres 证据。
+3. 阿里云发布需覆盖具体服务的用户授权；记录实际Compose、镜像ID、构建来源与Postgres迁移证据。Git合并不等于部署，旧Railway release-evidence脚本不能证明现役服务健康。
 4. 分别验收 frontend、backend、Postgres、smoke-monitor，不使用项目整体 Online 代替。
 5. 最后验收真实用户路径：登录 / 测试账号 → 模式入口 → 对话 → Summary / integrator → history 恢复。
 
@@ -45,15 +45,15 @@
 
 - `AGENTS.md`：只保留长期约束。
 - `AGENT_PROJECT_BRIEF.md`：当前架构、入口与真实服务关系。
-- 部署 runbook：当前 Railway 配置。
+- 部署 runbook：`deploy/aliyun/cutover-plan-20261009.md` 的现役状态和恢复边界；原平台材料保留历史标识。
 - PR：本次可复现验证证据。
 - Agent 记忆不得保存密钥、生产数据或易过期状态。
 
 用户确认线上验收后，再删除远端分支、本地分支、worktree、preview / 临时服务和临时测试数据。
 
-## 7. Railway 配置与回滚
+## 7. 阿里云配置与恢复
 
-- 当前 source/root/config/healthcheck/watch paths 的唯一 runbook 是 `deploy/railway/README.md`。
-- 修改 Railway source、Variables、domain、region、scale、healthcheck 或 watch paths 前必须由用户确认。
-- Postgres 跨区域先测至少 20 个健康样本，再决定是否立项迁移；迁移必须单独准备备份、恢复和回滚。
-- 回滚不能只看容器：先判断 migration 是否执行，再选择上一成功 deployment，并重新跑四服务 evidence。
+- 当前入口是 `deploy/aliyun/cutover-plan-20261009.md` 和实际Compose/运行镜像；`deploy/railway/README.md` 仅供历史追溯。
+- 生产部署、环境变量、域名、权限、数据库与资源删除需用户对具体动作授权；已有同范围授权不重复申请。
+- Railway旧项目已删除，不能选择旧deployment直接回滚。先核对schema与最新写入，备份并在独立目标验证恢复，再经授权切换；保留最新生产数据。
+- 恢复后分别核对frontend、backend、Postgres、smoke-monitor、正式HTTPS与真实用户路径；容器运行不能替代这些证据。

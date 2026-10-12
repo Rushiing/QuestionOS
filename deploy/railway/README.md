@@ -1,9 +1,9 @@
 # QuestionOS Railway 生产 Runbook
 
 > 历史阶段材料。当前部署与验收以[正式切换执行单](../aliyun/cutover-plan-20261009.md)为准；本文的“当前/待验收”均指记录当时。
-阿里云迁移准备见 [`../aliyun/README.md`](../aliyun/README.md)。本文件仍描述当前 Railway 平台，不能因迁移配置已存在而停服务或删除数据库。
+Railway旧项目已于2026-10-12删除并取消续订；现役部署入口见 [`../aliyun/README.md`](../aliyun/README.md)。本文不能作为重建旧服务或直接回滚的操作依据。
 
-本文只记录当前生产拓扑和可重复操作。不要整份导出 Railway Variables；只读取任务需要的变量名，任何 secret 不进入日志、PR 或 Agent 记忆。
+本文保留原平台的历史拓扑和操作说明。不要整份导出 Railway Variables；只读取任务需要的变量名，任何 secret 不进入日志、PR 或 Agent 记忆。
 
 ## 1. 生产拓扑
 

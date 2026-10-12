@@ -1,6 +1,6 @@
 # QuestionOS — 给其他 Agent / 协作者的工程说明（最新版）
 
-正式入口为 https://questionos.daydreamer.world ，现运行于阿里云。迁移、验收和 Railway 退出状态见 [`deploy/aliyun/cutover-plan-20261009.md`](deploy/aliyun/cutover-plan-20261009.md)。当前迁移工作树仍有已部署但未提交的唯一改动，禁止删除或以 HEAD 代表上线内容。
+正式入口为 https://questionos.daydreamer.world ，现运行于阿里云。迁移、验收和 Railway 退出状态见 [`deploy/aliyun/cutover-plan-20261009.md`](deploy/aliyun/cutover-plan-20261009.md)。迁移源码已提交到迁移分支，PR #3尚未合并；保留工作树、发布包与证据，不以Git HEAD或PR状态替代运行镜像核验。
 
 > 本文档按**当前仓库真实代码**整理，用于快速让外部 Agent 或新成员建立上下文、能改对地方。若与根目录下旧版 `v0.2/README.md`（仍写 Python/FastAPI）冲突，**以本文与 `java-backend/`、`v0.2/frontend/` 为准**。
 
@@ -36,7 +36,7 @@ git -c http.version=HTTP/1.1 push github main
 | 层级 | 技术 |
 |------|------|
 | **主后端** | Java 21、Spring Boot 3.3、**WebFlux**（响应式）、Maven |
-| **主前端** | Next.js 14（App Router）、TypeScript、Tailwind、Zustand、Axios |
+| **主前端** | Next.js 15.5.27（App Router）、TypeScript、Tailwind、Zustand、Axios |
 | **LLM** | OpenAI 兼容 `POST .../chat/completions`（DashScope / 自建网关等均可），由环境变量注入 |
 | **持久化** | `spring.profiles.active=local`：默认 JSON 文件快照；`postgres`：JDBC + PostgreSQL（见 `application-postgres.yml`） |
 
