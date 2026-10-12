@@ -1,6 +1,6 @@
 # QuestionOS — 给其他 Agent / 协作者的工程说明（最新版）
 
-正式入口为 https://questionos.daydreamer.world ，现运行于阿里云。迁移、验收和 Railway 退出状态见 [`deploy/aliyun/cutover-plan-20261009.md`](deploy/aliyun/cutover-plan-20261009.md)。当前迁移工作树仍有已部署但未提交的唯一改动，禁止删除或以 HEAD 代表上线内容。
+正式入口为 https://questionos.daydreamer.world ，现运行于阿里云。迁移、验收和 Railway 退出状态见 [`deploy/aliyun/cutover-plan-20261009.md`](deploy/aliyun/cutover-plan-20261009.md)。迁移源码已同步到 `codex/questionos-aliyun-migration`（PR #3）；Git 提交不等于线上镜像版本，部署前仍需核对运行产物。
 
 > 本文档按**当前仓库真实代码**整理，用于快速让外部 Agent 或新成员建立上下文、能改对地方。若与根目录下旧版 `v0.2/README.md`（仍写 Python/FastAPI）冲突，**以本文与 `java-backend/`、`v0.2/frontend/` 为准**。
 
@@ -178,11 +178,11 @@ npm run dev
 
 - 后端平台健康：`GET /actuator/health/liveness`；依赖健康与人工验收：`GET /actuator/health`
 - 指标：`GET /actuator/prometheus`
-- 部署参考：`deploy/railway/README.md`、`deploy/alinux/README.md`
-- 交付规范：`docs/DELIVERY_WORKFLOW.md`（分支 / worktree、风险分级、CI、Railway 分服务验收与 truth-sync）
+- 现役部署参考：`deploy/aliyun/cutover-plan-20261009.md`；Railway 与 alinux 文档为历史参考。
+- 交付规范：`docs/DELIVERY_WORKFLOW.md`（分支 / worktree、风险分级、CI、阿里云分服务验收与 truth-sync）
 - 常驻巡检：`Dockerfile.railway-smoke-monitor` + `scripts/questionos-smoke-monitor.mjs`。高频巡检默认不创建 session；只有显式设置 `QOS_SMOKE_CREATE_SESSION=1` 才验证 session + SSE replay。
-- 生产四资源：`frontend`（GitHub，root `/v0.2/frontend`）、`backend`（GitHub，root `/`）、`Postgres`（Railway image + volume）、`smoke-monitor`（GitHub，root `/`）。四项必须分别验收。
-- 发布证据：`scripts/questionos-release-evidence.mjs` 核对 merge commit、三个 GitHub service deployment、Postgres 连通和线上 smoke。
+- 现役 Compose `questionos-prod` 包含 frontend、backend、Postgres、smoke-monitor；四项必须分别验收。
+- 发布证据：核对实际镜像摘要、运行配置、Postgres 连通、正式域名与真实用户路径；`scripts/questionos-release-evidence.mjs` 的 Railway 服务证据仅适用于旧平台。
 - Prompt 质量：`docs/PROMPT_QUALITY_WORKFLOW.md`；legacy Python/mock 不代表生产 Java Agent。
 
 ---
@@ -246,7 +246,7 @@ AgentOrchestrator 在整合官轮次优先尊重用户中场小结/暂不收束�
 sandbox:grounded-role与sandbox:grounded-report使用JSON object，正常一次请求；格式/来源/数量失败最多重写一次，统一反馈全部数量缺口；若重写后仅推演数量仍不可靠，省略对应推演并显示核对提示，保留来源与建议；来源或格式错误仍发agent_error。中场小结保留现有生成+校对。主模型仍deepseek-v4-flash，跨模型校对实验未采用；没有新增模型环境变量。新验收记录见deploy/aliyun/quality-followup-20261009.md，未切换生产。
 
 
-### 2026-10-09 迁移准备收尾
+### 2026-10-09 迁移准备收尾（历史阶段）
 
 Pre-RICH隔离演练已升级Next15.5.27 Linux前端；OSS专用目录权限、上传回读、空库恢复及每日timer已验证。当前timer备份模拟库，正式切换必须改为生产库；生产配置仅暂存，未改DNS或切换Railway。执行范围、验收与回退见`deploy/aliyun/cutover-plan-20261009.md`。回答效果持续优化与迁移门禁分离。
 
