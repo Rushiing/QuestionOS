@@ -55,5 +55,6 @@
 
 - 当前入口是 `deploy/aliyun/cutover-plan-20261009.md` 和实际Compose/运行镜像；`deploy/railway/README.md` 仅供历史追溯。
 - 生产部署、环境变量、域名、权限、数据库与资源删除需用户对具体动作授权；已有同范围授权不重复申请。
+- Postgres 跨区域先测至少 20 个健康样本，再决定是否立项迁移；迁移必须单独准备备份、恢复和回滚。
 - Railway旧项目已删除，不能选择旧deployment直接回滚。先核对schema与最新写入，备份并在独立目标验证恢复，再经授权切换；保留最新生产数据。
 - 恢复后分别核对frontend、backend、Postgres、smoke-monitor、正式HTTPS与真实用户路径；容器运行不能替代这些证据。
